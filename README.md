@@ -1,6 +1,6 @@
 # Dorjee.ai
 
-Personal AI assistant POC that delivers daily briefings, natural language contact search (semantic + fuzzy), and AI-drafted outreach messages with human-in-the-loop approval.
+Personal AI assistant POC that delivers daily briefings, natural language contact search (semantic + fuzzy), and AI-drafted outreach messages with human-in-the-loop approval via WhatsApp.
 
 ## Quick Start
 
@@ -14,44 +14,43 @@ cd you.ai
 ./setup.sh
 
 # 3. Edit .env with your API keys
-#    Required: ANTHROPIC_API_KEY, OPENAI_API_KEY, TELEGRAM_BOT_TOKEN
+#    Required: ANTHROPIC_API_KEY
 
 # 4. Run setup again to start services
 ./setup.sh
 ```
 
 Services will be available at:
-- **n8n UI:** http://localhost:5678
 - **API:** http://localhost:3000
-- **WhatsApp (optional):** `docker compose --profile whatsapp up -d`
+- **Evolution API (WhatsApp):** http://localhost:8080
 
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────────┐     ┌──────────────────────┐
-│  Telegram /  │     │      n8n        │     │   Evolution API      │
-│  Gmail /     │────▶│  (workflows)    │────▶│   (WhatsApp)         │
-│  Calendar    │     │  :5678          │     │   :8080              │
-└─────────────┘     └────────┬────────┘     │   optional profile   │
-                             │              └──────────────────────┘
-                             │ HTTP
-                             ▼
-                    ┌─────────────────┐
-                    │   API (Express) │
-                    │   TypeScript    │
-                    │   :3000         │
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │   Postgres 17   │
-                    │   pgvector      │
-                    │   pg_trgm       │
-                    │   :5432         │
-                    └─────────────────┘
+┌──────────────────────┐
+│   Evolution API      │
+│   (WhatsApp)         │◀── WhatsApp messages
+│   :8080              │
+└──────────┬───────────┘
+           │ webhook
+           ▼
+  ┌─────────────────┐
+  │   API (Express) │
+  │   TypeScript    │
+  │   :3000         │
+  │   + scheduler   │
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │   Postgres 17   │
+  │   pgvector      │
+  │   pg_trgm       │
+  │   :5432         │
+  └─────────────────┘
 ```
 
-n8n workflows call the API for contact search, briefing assembly, and outreach drafting. Postgres stores contacts (with vector embeddings), briefings, interactions, and sub-agent configs.
+The API service handles all logic: WhatsApp chat via webhook, scheduled briefings and alerts (cron), contact search, outreach drafting, and data import. Postgres stores contacts (with vector embeddings), briefings, interactions, and sub-agent configs.
 
 ## API Endpoints
 
@@ -60,6 +59,7 @@ All routes are prefixed with `/api` except health.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check |
+| POST | `/api/chat/webhook` | WhatsApp chat webhook (called by Evolution API) |
 | POST | `/api/contacts/search` | Search contacts (semantic, fuzzy, or combined) |
 | POST | `/api/contacts/ingest` | Upsert a single contact |
 | POST | `/api/contacts/ingest/csv` | Bulk-import contacts from CSV string |
@@ -74,20 +74,9 @@ All routes are prefixed with `/api` except health.
 | POST | `/api/sub-agents` | Create a sub-agent |
 | PATCH | `/api/sub-agents/:id` | Update a sub-agent |
 | DELETE | `/api/sub-agents/:id` | Soft-delete a sub-agent |
-
-## n8n Workflows
-
-| Workflow | Description |
-|----------|-------------|
-| `telegram-chat` | Telegram bot interface for natural language queries (contact lookup, briefing requests) |
-| `morning-briefing` | Cron-triggered daily briefing — collects sub-agent outputs, calls `/briefings/assemble`, sends to Telegram |
-| `urgent-alerts` | Periodic check for time-sensitive events, sends alerts via Telegram |
-| `gmail-trigger` | Watches inbox for new emails, logs interactions, updates contact records |
-| `calendar-trigger` | Watches calendar for upcoming meetings, triggers matchmaking prep |
-| `outreach-campaign` | Orchestrates outreach: searches contacts, drafts messages, queues for human approval |
-| `whatsapp-chat` | WhatsApp bot interface via Evolution API (mirrors Telegram flow) |
-
-Workflow JSON files live in `n8n/workflows/` and are imported during setup.
+| POST | `/api/import/mbox` | Import contacts/interactions from mbox email export |
+| POST | `/api/import/ics` | Import events from ICS calendar file |
+| POST | `/api/import/csv` | Import contacts from CSV file |
 
 ## Environment Variables
 
@@ -100,12 +89,9 @@ Workflow JSON files live in `n8n/workflows/` and are imported during setup.
 | `EMBEDDING_MODEL` | Embedding model name (default: `text-embedding-3-small`) |
 | `EMBEDDING_DIMENSIONS` | Embedding vector size (default: `1536`) |
 | `API_PORT` / `API_HOST` | API server bind address (default: `3000` / `0.0.0.0`) |
-| `N8N_BASIC_AUTH_USER` / `PASSWORD` | n8n UI login credentials |
-| `N8N_ENCRYPTION_KEY` | n8n encryption key for stored credentials |
-| `N8N_HOST` / `N8N_PORT` | n8n host and port (default: `localhost` / `5678`) |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token for chat workflows |
 | `EVOLUTION_API_URL` / `KEY` | Evolution API connection for WhatsApp integration |
+| `EVOLUTION_INSTANCE` | Evolution API instance name (default: `dorjee`) |
+| `WHATSAPP_OWNER_JID` | WhatsApp JID of the bot owner |
 | `BRIEFING_HISTORY_COUNT` | Number of past briefings included as context (default: `5`) |
 | `BRIEFING_CRON` | Cron expression for morning briefing (default: `0 7 * * *`) |
 | `ALERT_CRON` | Cron expression for urgent alert checks (default: `*/15 * * * *`) |
-| `TIMEZONE` | Timezone for n8n scheduling (default: `UTC`) |
