@@ -1,30 +1,24 @@
 import { Router } from "express";
 import type { DB } from "../db/client.js";
-import { parseIncomingMessage, sendWhatsApp } from "../services/messaging.js";
+import type { MessagingProvider } from "../services/messaging/index.js";
 import { handleChatMessage } from "../services/agent.js";
 
-export function chatRouter(db: DB): Router {
+export function chatRouter(db: DB, provider: MessagingProvider): Router {
   const router = Router();
 
-  // Evolution API webhook
   router.post("/webhook", (req, res) => {
-    const msg = parseIncomingMessage(req.body);
+    const msg = provider.parseIncoming(req.body);
 
     // Return 200 immediately to avoid webhook timeout
     res.json({ ok: true });
 
     if (!msg) return;
 
-    // Security: only respond to the owner
-    const ownerJid = process.env.WHATSAPP_OWNER_JID;
-    if (ownerJid && msg.remoteJid !== ownerJid) return;
-
-    // Process async
-    handleChatMessage(db, msg.remoteJid, msg.message)
-      .then((response) => sendWhatsApp(msg.remoteJid, response))
+    handleChatMessage(db, msg.senderId, msg.text)
+      .then((response) => provider.send(msg.senderId, response))
       .catch((err) => {
         console.error("Chat agent error:", err);
-        sendWhatsApp(msg.remoteJid, "Sorry, something went wrong. Try again.").catch(console.error);
+        provider.send(msg.senderId, "Sorry, something went wrong. Try again.").catch(console.error);
       });
   });
 
