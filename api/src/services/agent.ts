@@ -196,7 +196,7 @@ export async function handleChatMessage(
   messages.push({ role: "user", content: userMessage });
 
   let response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6-20260401",
+    model: "claude-sonnet-4-6",
     max_tokens: 1024,
     system: SYSTEM_PROMPT,
     tools,
@@ -225,7 +225,7 @@ export async function handleChatMessage(
     messages.push({ role: "user", content: toolResults });
 
     response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6-20260401",
+      model: "claude-sonnet-4-6",
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       tools,

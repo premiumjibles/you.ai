@@ -96,7 +96,7 @@ export async function consolidateBriefing(
 ): Promise<string> {
   const prompt = buildBriefingPrompt(outputs, history);
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6-20260401",
+    model: "claude-sonnet-4-6",
     max_tokens: 2000,
     messages: [{ role: "user", content: prompt }],
   });
