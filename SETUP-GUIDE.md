@@ -86,68 +86,100 @@ docker compose logs evolution-api --tail 20
 
 ## Step 6: Connect WhatsApp
 
-### Open Evolution API manager
+All commands below run on the server. The API key variable is read from your `.env` automatically.
 
-From your **local machine** (not the server), open an SSH tunnel:
+### 6a. Create a WhatsApp instance
 
+```bash
+APIKEY=$(grep EVOLUTION_API_KEY .env | cut -d= -f2)
+INSTANCE=$(grep EVOLUTION_INSTANCE .env | cut -d= -f2)
+INSTANCE=${INSTANCE:-dorjee}
+
+curl -s -X POST http://localhost:8080/instance/create \
+  -H "apikey: $APIKEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"instanceName\": \"$INSTANCE\", \"integration\": \"WHATSAPP-BAILEYS\", \"qrcode\": true}" | python3 -m json.tool
+```
+
+You should see a response with `"status": "connecting"`.
+
+### 6b. Get the QR code
+
+```bash
+# Wait a few seconds for the instance to initialize, then:
+sleep 5
+curl -s http://localhost:8080/instance/connect/$INSTANCE \
+  -H "apikey: $APIKEY" | python3 -m json.tool
+```
+
+The response should contain a `base64` field with the QR image and/or a `code` field with the pairing text.
+
+**If you get `{"count": 0}`:** The instance may need more time to connect to WhatsApp servers. Wait 10 seconds and retry. Check `docker compose logs evolution-api --tail 20` for errors.
+
+### 6c. Scan the QR code
+
+**Option A — Browser (easiest):** If the response has a `base64` field, copy the value and open this in your browser address bar:
+```
+data:image/png;base64,<paste-base64-here>
+```
+
+**Option B — Manager UI:** SSH tunnel from your local machine:
 ```bash
 ssh -L 8080:localhost:8080 user@your-server-ip
 ```
+Open `http://localhost:8080/manager`, log in with your `EVOLUTION_API_KEY`, click the instance, click "Get QR Code".
 
-Then open `http://localhost:8080/manager` in your browser.
-
-### Log in
-
-The API key is in your `.env` file. Check it with:
-
+**Option C — Terminal QR:** If you have `qrencode` installed:
 ```bash
-grep EVOLUTION_API_KEY .env
+curl -s http://localhost:8080/instance/connect/$INSTANCE \
+  -H "apikey: $APIKEY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" | qrencode -t ANSIUTF8
 ```
 
-Paste that value into the manager login.
+**Scan with your phone:** Open WhatsApp → Settings → Linked Devices → Link a Device → scan the QR code.
 
-### Create a WhatsApp instance
-
-1. Click **"Add Instance"**
-2. Instance name: `dorjee` (must match `EVOLUTION_INSTANCE` in your `.env`)
-3. **Important:** Select **"Evolution"** as the channel type (NOT "Baileys")
-4. Click Create
-
-### Scan QR code
-
-1. Click on your new instance
-2. Click **"Get QR Code"**
-3. A QR code appears — scan it with WhatsApp on your phone:
-   - Open WhatsApp → Settings → Linked Devices → Link a Device
-4. Status should change from "Disconnected" to "Connected"
-
-If the QR code dialog appears empty, delete the instance and recreate it — make sure you selected "Evolution" (not "Baileys") as the channel.
-
-### Set your WhatsApp JID
-
-After connecting, you need to tell the API service which WhatsApp number is the owner (so it only responds to you). Your JID is your phone number in this format: `<country-code><number>@s.whatsapp.net`
-
-Example: Australian number 0412 345 678 → `61412345678@s.whatsapp.net`
+### 6d. Verify connection
 
 ```bash
-nano .env
+curl -s http://localhost:8080/instance/connectionState/$INSTANCE \
+  -H "apikey: $APIKEY"
 ```
 
-Set `WHATSAPP_OWNER_JID=61412345678@s.whatsapp.net` (use your actual number).
+Expected: `"state": "open"`. Your `ownerJid` should show your phone number.
 
-Then restart the API:
+### 6e. Set your owner JID
+
+Your JID is your phone number in the format: `<country-code><number>@s.whatsapp.net`
+(Example: Australian 0412 345 678 → `61412345678@s.whatsapp.net`)
 
 ```bash
+# Get your JID from the instance info (if connected):
+curl -s http://localhost:8080/instance/fetchInstances \
+  -H "apikey: $APIKEY" | python3 -c "
+import sys, json
+instances = json.load(sys.stdin)
+for i in instances:
+    if i['name'] == '${INSTANCE}':
+        print(f\"Your JID: {i.get('ownerJid', 'not connected yet')}\")
+"
+
+# Set it in .env:
+sed -i "s/^WHATSAPP_OWNER_JID=.*/WHATSAPP_OWNER_JID=<your-jid-here>/" .env
+
+# Restart API to pick up the new JID:
 docker compose restart api
 ```
 
 ## Step 7: Configure the webhook
 
-Evolution API needs to know where to send incoming WhatsApp messages. Set the webhook to point at your API service:
+Tell Evolution API to forward incoming WhatsApp messages to your API service:
 
 ```bash
-curl -X PUT http://localhost:8080/webhook/set/dorjee \
-  -H "apikey: $(grep EVOLUTION_API_KEY .env | cut -d= -f2)" \
+APIKEY=$(grep EVOLUTION_API_KEY .env | cut -d= -f2)
+INSTANCE=$(grep EVOLUTION_INSTANCE .env | cut -d= -f2)
+INSTANCE=${INSTANCE:-dorjee}
+
+curl -s -X POST http://localhost:8080/webhook/set/$INSTANCE \
+  -H "apikey: $APIKEY" \
   -H "Content-Type: application/json" \
   -d '{
     "webhook": {
@@ -156,10 +188,17 @@ curl -X PUT http://localhost:8080/webhook/set/dorjee \
       "webhookByEvents": false,
       "events": ["MESSAGES_UPSERT"]
     }
-  }'
+  }' | python3 -m json.tool
 ```
 
-Note: The URL uses `http://api:3000` (the Docker internal network hostname), not `localhost`.
+The URL uses `http://api:3000` (Docker internal hostname), not `localhost`.
+
+### Verify webhook is set
+
+```bash
+curl -s http://localhost:8080/webhook/find/$INSTANCE \
+  -H "apikey: $APIKEY" | python3 -m json.tool
+```
 
 ## Step 8: Test it
 
@@ -168,6 +207,12 @@ Send a WhatsApp message to the number you linked. The AI assistant should respon
 Try:
 - "hello" — should get a conversational response
 - "search for [name]" — searches your contact database (empty until you import data)
+
+If no response, check the API logs:
+
+```bash
+docker compose logs api --tail 20
+```
 
 ## Step 9: Import your data (optional)
 
@@ -239,8 +284,8 @@ Evolution API needs its own database, separate from the app database. Create it:
 docker compose exec postgres psql -U youai -c "CREATE DATABASE evolution;"
 ```
 
-### QR code not showing in Evolution API manager
-Delete the instance and recreate it. Make sure you select **"Evolution"** as the channel type, not "Baileys".
+### QR code not showing / `count: 0` from connect endpoint
+Delete the instance and recreate it via CLI (see Step 6a-6b). The manager UI is unreliable for QR generation. If `connect` keeps returning `{"count": 0}`, check `docker compose logs evolution-api --tail 30` — the Baileys connection to WhatsApp servers may be failing. Verify outbound connectivity: `docker compose exec evolution-api sh -c "wget -q -O- --timeout=5 https://web.whatsapp.com > /dev/null && echo OK || echo BLOCKED"`.
 
 ### Setup script stuck on "Waiting for Evolution API..."
 Check the logs: `docker compose logs evolution-api --tail 20`. First boot takes 1-2 minutes for database migrations.
