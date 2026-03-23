@@ -1,5 +1,6 @@
 import express from "express";
 import { contactsRouter } from "./routes/contacts.js";
+import { briefingsRouter } from "./routes/briefings.js";
 import pool from "./db/client.js";
 
 const app = express();
@@ -10,6 +11,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/contacts", contactsRouter(pool));
+app.use("/api/briefings", briefingsRouter(pool));
 
 const port = parseInt(process.env.API_PORT || "3000");
 app.listen(port, process.env.API_HOST || "0.0.0.0", () => {
