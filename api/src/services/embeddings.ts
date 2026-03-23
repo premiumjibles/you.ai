@@ -1,7 +1,10 @@
 import type pg from "pg";
 import OpenAI from "openai";
 
-const openai = new OpenAI();
+function getOpenAIClient(): OpenAI | null {
+  if (!process.env.OPENAI_API_KEY) return null;
+  return new OpenAI();
+}
 
 interface ContactFields {
   name: string;
@@ -17,7 +20,9 @@ export function buildEmbeddingText(contact: ContactFields): string {
     .join(" ");
 }
 
-export async function generateEmbedding(text: string): Promise<number[]> {
+export async function generateEmbedding(text: string): Promise<number[] | null> {
+  const openai = getOpenAIClient();
+  if (!openai) return null;
   const response = await openai.embeddings.create({
     model: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
     input: text,
@@ -30,6 +35,7 @@ export async function updateContactEmbedding(
   db: pg.Pool,
   contactId: string
 ): Promise<void> {
+  if (!process.env.OPENAI_API_KEY) return;
   const { rows } = await db.query(
     "SELECT name, role, company, location, notes FROM contacts WHERE id = $1",
     [contactId]
@@ -38,6 +44,7 @@ export async function updateContactEmbedding(
 
   const text = buildEmbeddingText(rows[0]);
   const embedding = await generateEmbedding(text);
+  if (!embedding) return;
 
   await db.query("UPDATE contacts SET embedding = $1 WHERE id = $2", [
     JSON.stringify(embedding),
