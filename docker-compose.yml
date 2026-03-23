@@ -28,23 +28,26 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
       BRIEFING_HISTORY_COUNT: ${BRIEFING_HISTORY_COUNT:-5}
-      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://evolution-api:8080}
-      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
-      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-dorjee}
-      WHATSAPP_OWNER_JID: ${WHATSAPP_OWNER_JID}
       BRIEFING_CRON: ${BRIEFING_CRON:-0 7 * * *}
       ALERT_CRON: ${ALERT_CRON:-*/15 * * * *}
+      MESSAGING_PROVIDER: ${MESSAGING_PROVIDER:-telegram}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_OWNER_ID: ${TELEGRAM_OWNER_ID:-}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://evolution-api:8080}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-dorjee}
+      WHATSAPP_OWNER_JID: ${WHATSAPP_OWNER_JID:-}
     ports:
       - "${API_PORT:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy
-      evolution-api:
-        condition: service_started
     restart: unless-stopped
 
   evolution-api:
     image: atendai/evolution-api:latest
+    profiles:
+      - whatsapp
     environment:
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
       DATABASE_PROVIDER: postgresql
