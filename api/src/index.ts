@@ -5,7 +5,9 @@ import { outreachRouter } from "./routes/outreach.js";
 import { interactionsRouter } from "./routes/interactions.js";
 import { subAgentsRouter } from "./routes/sub-agents.js";
 import { importRouter } from "./routes/import.js";
+import { chatRouter } from "./routes/chat.js";
 import pool from "./db/client.js";
+import { startScheduler } from "./services/scheduler.js";
 
 const app = express();
 app.use(express.json());
@@ -20,10 +22,12 @@ app.use("/api/outreach", outreachRouter(pool));
 app.use("/api/interactions", interactionsRouter(pool));
 app.use("/api/sub-agents", subAgentsRouter(pool));
 app.use("/api/import", importRouter(pool));
+app.use("/api/chat", chatRouter(pool));
 
 const port = parseInt(process.env.API_PORT || "3000");
 app.listen(port, process.env.API_HOST || "0.0.0.0", () => {
   console.log(`API server listening on port ${port}`);
+  startScheduler(pool);
 });
 
 export default app;
