@@ -67,6 +67,16 @@ CREATE TABLE briefings (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Chat messages
+CREATE TABLE chat_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    tool_use JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX idx_contacts_name_trgm ON contacts USING gist (name gist_trgm_ops);
 CREATE INDEX idx_contacts_full_tsvector ON contacts USING gin (full_tsvector);
@@ -77,6 +87,7 @@ CREATE INDEX idx_interactions_contact_id ON interactions (contact_id);
 CREATE INDEX idx_interactions_date ON interactions (date DESC);
 CREATE INDEX idx_sub_agents_user_active ON sub_agents (user_id) WHERE active = true;
 CREATE INDEX idx_briefings_user_date ON briefings (user_id, date DESC);
+CREATE INDEX idx_chat_messages_session ON chat_messages (session_id, created_at DESC);
 
 -- Updated_at trigger
 CREATE OR REPLACE FUNCTION update_updated_at()

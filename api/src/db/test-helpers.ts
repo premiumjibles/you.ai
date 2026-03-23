@@ -37,7 +37,7 @@ export async function getTestDb(): Promise<pg.Pool> {
 }
 
 export async function cleanTestDb(db: pg.Pool): Promise<void> {
-  await db.query("TRUNCATE contacts, interactions, sub_agents, briefings CASCADE");
+  await db.query("TRUNCATE contacts, interactions, sub_agents, briefings, chat_messages CASCADE");
 }
 
 export async function closeTestDb(): Promise<void> {
