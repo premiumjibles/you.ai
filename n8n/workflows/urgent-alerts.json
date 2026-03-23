@@ -22,7 +22,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://api:3000/api/sub-agents?has_alerts=true",
+        "url": "http://api:3000/api/sub-agents",
         "options": {}
       },
       "id": "get-agents",
@@ -33,7 +33,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst alerts = [];\n\nfor (const item of items) {\n  const agent = item.json;\n  const threshold = agent.alert_threshold || 5;\n  const currentValue = agent.current_value || 0;\n  const previousValue = agent.previous_value || 0;\n\n  if (previousValue === 0) continue;\n\n  const pctChange = Math.abs((currentValue - previousValue) / previousValue * 100);\n\n  if (pctChange > threshold) {\n    alerts.push({\n      json: {\n        agent_name: agent.name,\n        metric: agent.metric,\n        pct_change: pctChange.toFixed(2),\n        current_value: currentValue,\n        previous_value: previousValue,\n        threshold: threshold,\n        direction: currentValue > previousValue ? 'up' : 'down'\n      }\n    });\n  }\n}\n\nreturn alerts.length > 0 ? alerts : [];"
+        "jsCode": "const items = $input.all();\nconst alerts = [];\n\nfor (const item of items) {\n  const agent = item.json;\n  const config = agent.config || {};\n  const threshold = config.alert_threshold || 5;\n  const currentValue = config.current_value || 0;\n  const previousValue = config.previous_value || 0;\n\n  if (previousValue === 0) continue;\n\n  const pctChange = Math.abs((currentValue - previousValue) / previousValue * 100);\n\n  if (pctChange > threshold) {\n    alerts.push({\n      json: {\n        agent_name: agent.name,\n        metric: config.metric,\n        pct_change: pctChange.toFixed(2),\n        current_value: currentValue,\n        previous_value: previousValue,\n        threshold: threshold,\n        direction: currentValue > previousValue ? 'up' : 'down'\n      }\n    });\n  }\n}\n\nreturn alerts.length > 0 ? alerts : [];"
       },
       "id": "check-thresholds",
       "name": "Check Thresholds",

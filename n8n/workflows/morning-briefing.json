@@ -117,7 +117,10 @@
     },
     "Execute Sub-Agent Workflow": {
       "main": [
-        [{ "node": "Split In Batches", "type": "main", "index": 0 }]
+        [
+          { "node": "Split In Batches", "type": "main", "index": 0 },
+          { "node": "Merge Results", "type": "main", "index": 0 }
+        ]
       ]
     },
     "Merge Results": {

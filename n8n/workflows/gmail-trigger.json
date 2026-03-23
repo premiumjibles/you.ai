@@ -50,7 +50,7 @@
         "url": "http://api:3000/api/interactions",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"contact_email\": \"{{ $('Extract Email Fields').item.json.sender_email }}\",\n  \"type\": \"email_received\",\n  \"subject\": \"{{ $('Extract Email Fields').item.json.subject }}\",\n  \"summary\": \"{{ $('Extract Email Fields').item.json.body_snippet }}\",\n  \"source\": \"gmail\",\n  \"external_id\": \"{{ $('Extract Email Fields').item.json.message_id }}\",\n  \"occurred_at\": \"{{ $('Extract Email Fields').item.json.received_at }}\"\n}",
+        "jsonBody": "={\n  \"contact_id\": \"{{ $json.contact.id }}\",\n  \"type\": \"email\",\n  \"date\": \"{{ $('Extract Email Fields').item.json.received_at }}\",\n  \"raw_content\": \"Subject: {{ $('Extract Email Fields').item.json.subject }}\\n\\n{{ $('Extract Email Fields').item.json.body_snippet }}\"\n}",
         "options": {}
       },
       "id": "log-interaction",

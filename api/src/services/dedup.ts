@@ -1,16 +1,8 @@
 import type pg from "pg";
 
-interface ContactInput {
-  name: string;
-  email?: string | null;
-  phone?: string | null;
-  company?: string | null;
-  [key: string]: any;
-}
-
 export async function findDuplicate(
   db: pg.Pool,
-  input: ContactInput
+  input: { name: string; email?: string | null; phone?: string | null; company?: string | null }
 ): Promise<any | null> {
   // 1. Email match (highest confidence)
   if (input.email) {

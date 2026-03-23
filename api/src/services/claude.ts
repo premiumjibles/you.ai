@@ -75,7 +75,19 @@ Respond: {"strategies": [...], "reasoning": "..."}`,
     ],
   });
   const text = response.content[0].type === "text" ? response.content[0].text : "";
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        // fall through
+      }
+    }
+    return { strategies: ["fuzzy_name"], reasoning: "Failed to parse LLM response, using default" };
+  }
 }
 
 export async function consolidateBriefing(
