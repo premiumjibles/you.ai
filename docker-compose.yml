@@ -27,38 +27,19 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
       BRIEFING_HISTORY_COUNT: ${BRIEFING_HISTORY_COUNT:-5}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://evolution-api:8080}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-dorjee}
+      WHATSAPP_OWNER_JID: ${WHATSAPP_OWNER_JID}
+      BRIEFING_CRON: ${BRIEFING_CRON:-0 7 * * *}
+      ALERT_CRON: ${ALERT_CRON:-*/15 * * * *}
     ports:
       - "${API_PORT:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
-
-  n8n:
-    image: n8nio/n8n:latest
-    environment:
-      N8N_BASIC_AUTH_ACTIVE: "true"
-      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
-      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
-      N8N_HOST: ${N8N_HOST:-localhost}
-      N8N_PORT: ${N8N_PORT:-5678}
-      DB_TYPE: postgresdb
-      DB_POSTGRESDB_HOST: postgres
-      DB_POSTGRESDB_PORT: 5432
-      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB}
-      DB_POSTGRESDB_USER: ${POSTGRES_USER}
-      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
-      GENERIC_TIMEZONE: ${TIMEZONE:-UTC}
-      N8N_PERSONALIZATION_ENABLED: "false"
-    volumes:
-      - n8n-data:/home/node/.n8n
-      - ./n8n/workflows:/workflows
-    ports:
-      - "${N8N_PORT:-5678}:5678"
-    depends_on:
-      postgres:
-        condition: service_healthy
+      evolution-api:
+        condition: service_started
     restart: unless-stopped
 
   evolution-api:
@@ -70,10 +51,7 @@ services:
     ports:
       - "8080:8080"
     restart: unless-stopped
-    profiles:
-      - whatsapp
 
 volumes:
   postgres-data:
-  n8n-data:
   evolution-data:
