@@ -1,21 +1,21 @@
 import cron from "node-cron";
 import type pg from "pg";
 import { consolidateBriefing } from "./claude.js";
-import { sendWhatsApp } from "./messaging.js";
+import type { MessagingProvider } from "./messaging/index.js";
 
-export function startScheduler(db: pg.Pool): void {
+export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
   const briefingCron = process.env.BRIEFING_CRON || "0 7 * * *";
   const alertCron = process.env.ALERT_CRON || "*/15 * * * *";
-  const ownerJid = process.env.WHATSAPP_OWNER_JID;
+  const ownerAddress = provider.getOwnerAddress();
 
-  if (!ownerJid) {
-    console.log("Scheduler: WHATSAPP_OWNER_JID not set, skipping cron jobs");
+  if (!ownerAddress) {
+    console.log("Scheduler: owner address not set, skipping cron jobs");
     return;
   }
 
   // Morning briefing
   cron.schedule(briefingCron, () => {
-    runMorningBriefing(db, ownerJid).catch((err) =>
+    runMorningBriefing(db, provider, ownerAddress).catch((err) =>
       console.error("Morning briefing failed:", err)
     );
   });
@@ -23,7 +23,7 @@ export function startScheduler(db: pg.Pool): void {
 
   // Urgent alerts
   cron.schedule(alertCron, () => {
-    runUrgentAlerts(db, ownerJid).catch((err) =>
+    runUrgentAlerts(db, provider, ownerAddress).catch((err) =>
       console.error("Urgent alerts check failed:", err)
     );
   });
@@ -32,15 +32,16 @@ export function startScheduler(db: pg.Pool): void {
 
 async function runMorningBriefing(
   db: pg.Pool,
-  ownerJid: string
+  provider: MessagingProvider,
+  ownerAddress: string
 ): Promise<void> {
   const { rows: agents } = await db.query(
     "SELECT * FROM sub_agents WHERE user_id = 'sean' AND active = true"
   );
 
   if (agents.length === 0) {
-    await sendWhatsApp(
-      ownerJid,
+    await provider.send(
+      ownerAddress,
       "Good morning! No briefing topics configured yet. Send me a message to add topics."
     );
     return;
@@ -72,7 +73,7 @@ async function runMorningBriefing(
     [content, JSON.stringify(outputs)]
   );
 
-  await sendWhatsApp(ownerJid, content);
+  await provider.send(ownerAddress, content);
 }
 
 async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
@@ -129,7 +130,8 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
 
 async function runUrgentAlerts(
   db: pg.Pool,
-  ownerJid: string
+  provider: MessagingProvider,
+  ownerAddress: string
 ): Promise<void> {
   const { rows: agents } = await db.query(
     "SELECT * FROM sub_agents WHERE user_id = 'sean' AND active = true"
@@ -150,7 +152,7 @@ async function runUrgentAlerts(
     if (Math.abs(change) >= threshold) {
       const direction = change > 0 ? "up" : "down";
       const message = `Alert: ${agent.name}\n${config.metric || "Value"} is ${direction} ${Math.abs(change).toFixed(1)}%\nCurrent: ${current}\nPrevious: ${previous}\nThreshold: ${threshold}%`;
-      await sendWhatsApp(ownerJid, message);
+      await provider.send(ownerAddress, message);
     }
   }
 }
