@@ -1,0 +1,149 @@
+{
+  "id": "outreach-campaign",
+  "name": "Outreach Campaign",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "outreach-campaign",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3000/api/outreach/draft",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "generate-drafts",
+      "name": "Generate Drafts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-drafts",
+      "name": "Split Drafts",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=📤 *Outreach Draft*\n\nTo: {{ $json.recipient_name }} ({{ $json.recipient_email }})\n\n{{ $json.draft_body }}",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "replyMarkup": "inlineKeyboard",
+          "inlineKeyboard": {
+            "rows": [
+              {
+                "row": [
+                  { "text": "✅ Approve", "callbackData": "approve_{{ $json.draft_id }}" },
+                  { "text": "✏️ Edit", "callbackData": "edit_{{ $json.draft_id }}" },
+                  { "text": "⏭ Skip", "callbackData": "skip_{{ $json.draft_id }}" }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "id": "send-draft",
+      "name": "Send Draft for Review",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {
+          "webhookSuffix": "={{ $json.draft_id }}"
+        }
+      },
+      "id": "wait-response",
+      "name": "Wait for Response",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "approve-check",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "approve",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-approved",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [{ "node": "Generate Drafts", "type": "main", "index": 0 }]
+      ]
+    },
+    "Generate Drafts": {
+      "main": [
+        [{ "node": "Split Drafts", "type": "main", "index": 0 }]
+      ]
+    },
+    "Split Drafts": {
+      "main": [
+        [{ "node": "Send Draft for Review", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Draft for Review": {
+      "main": [
+        [{ "node": "Wait for Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait for Response": {
+      "main": [
+        [{ "node": "Approved?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [{ "node": "Split Drafts", "type": "main", "index": 0 }],
+        [{ "node": "Split Drafts", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
