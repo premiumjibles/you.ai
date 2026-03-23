@@ -58,6 +58,11 @@ describe("TelegramProvider", () => {
     process.env.TELEGRAM_OWNER_ID = prev;
   });
 
+  it("send throws if provider not initialized", async () => {
+    const provider = new TelegramProvider();
+    await expect(provider.send("123", "hi")).rejects.toThrow(/not initialized/);
+  });
+
   it("init throws if TELEGRAM_BOT_TOKEN is missing", async () => {
     const prevToken = process.env.TELEGRAM_BOT_TOKEN;
     const prevOwner = process.env.TELEGRAM_OWNER_ID;
