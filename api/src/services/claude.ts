@@ -16,7 +16,7 @@ export function buildBriefingPrompt(
   outputs: SubAgentOutput[],
   history: BriefingHistory[]
 ): string {
-  let prompt = "You are assembling a daily briefing. Consolidate the following sub-agent outputs into one coherent briefing. Cross-reference related items.\n\n";
+  let prompt = "You are assembling a daily briefing for a chat app. Consolidate the following sub-agent outputs into one coherent briefing. Cross-reference related items. Use plain text only — no markdown, no asterisks, no formatting symbols. Use emoji sparingly for section headers and visual structure.\n\n";
 
   if (history.length > 0) {
     prompt += "## Recent Briefings (for context and continuity)\n\n";
