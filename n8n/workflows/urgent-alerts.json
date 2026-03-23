@@ -1,0 +1,115 @@
+{
+  "id": "urgent-alerts",
+  "name": "Urgent Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://api:3000/api/sub-agents?has_alerts=true",
+        "options": {}
+      },
+      "id": "get-agents",
+      "name": "Get Active Sub-Agents",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst alerts = [];\n\nfor (const item of items) {\n  const agent = item.json;\n  const threshold = agent.alert_threshold || 5;\n  const currentValue = agent.current_value || 0;\n  const previousValue = agent.previous_value || 0;\n\n  if (previousValue === 0) continue;\n\n  const pctChange = Math.abs((currentValue - previousValue) / previousValue * 100);\n\n  if (pctChange > threshold) {\n    alerts.push({\n      json: {\n        agent_name: agent.name,\n        metric: agent.metric,\n        pct_change: pctChange.toFixed(2),\n        current_value: currentValue,\n        previous_value: previousValue,\n        threshold: threshold,\n        direction: currentValue > previousValue ? 'up' : 'down'\n      }\n    });\n  }\n}\n\nreturn alerts.length > 0 ? alerts : [];"
+      },
+      "id": "check-thresholds",
+      "name": "Check Thresholds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "threshold-check",
+              "leftValue": "={{ $json.pct_change }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-breached",
+      "name": "Threshold Breached?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🚨 *Alert: {{ $json.agent_name }}*\n\nMetric: {{ $json.metric }}\nChange: {{ $json.pct_change }}% {{ $json.direction }}\nCurrent: {{ $json.current_value }}\nPrevious: {{ $json.previous_value }}\nThreshold: {{ $json.threshold }}%",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-send",
+      "name": "Telegram Send Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1000, 200]
+    }
+  ],
+  "connections": {
+    "Cron Trigger": {
+      "main": [
+        [{ "node": "Get Active Sub-Agents", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get Active Sub-Agents": {
+      "main": [
+        [{ "node": "Check Thresholds", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Thresholds": {
+      "main": [
+        [{ "node": "Threshold Breached?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Threshold Breached?": {
+      "main": [
+        [{ "node": "Telegram Send Alert", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
