@@ -56,6 +56,21 @@ describe("WhatsAppProvider", () => {
     process.env.WHATSAPP_OWNER_JID = prev;
   });
 
+  it("parseIncoming returns null for non-owner messages when owner is set", () => {
+    const prev = process.env.WHATSAPP_OWNER_JID;
+    process.env.WHATSAPP_OWNER_JID = "551100000@s.whatsapp.net";
+    const provider = new WhatsAppProvider();
+    const body = {
+      data: {
+        key: { remoteJid: "5599999999@s.whatsapp.net" },
+        message: { conversation: "hello" },
+        pushName: "Stranger",
+      },
+    };
+    expect(provider.parseIncoming(body)).toBeNull();
+    process.env.WHATSAPP_OWNER_JID = prev;
+  });
+
   it("init throws if required env vars are missing", async () => {
     const prev = {
       url: process.env.EVOLUTION_API_URL,

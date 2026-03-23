@@ -32,6 +32,7 @@ export class WhatsAppProvider implements MessagingProvider {
     if (!response.ok) {
       const err = await response.text();
       console.error(`Failed to send WhatsApp message: ${response.status} ${err}`);
+      throw new Error(`Failed to send WhatsApp message: ${response.status}`);
     }
   }
 
@@ -39,6 +40,10 @@ export class WhatsAppProvider implements MessagingProvider {
     try {
       const data = payload.data;
       if (!data?.key?.remoteJid || !data?.message) return null;
+
+      const senderId = data.key.remoteJid;
+      const ownerJid = this.ownerJid || process.env.WHATSAPP_OWNER_JID || "";
+      if (ownerJid && senderId !== ownerJid) return null;
 
       const msg = data.message;
       const text = msg.conversation
@@ -50,7 +55,7 @@ export class WhatsAppProvider implements MessagingProvider {
       if (!text) return null;
 
       return {
-        senderId: data.key.remoteJid,
+        senderId,
         senderName: data.pushName || "Unknown",
         text,
       };

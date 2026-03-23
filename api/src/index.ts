@@ -9,7 +9,7 @@ import { chatRouter } from "./routes/chat.js";
 import pool from "./db/client.js";
 import { startScheduler } from "./services/scheduler.js";
 import { createMessagingProvider } from "./services/messaging/index.js";
-import { handleChatMessage } from "./services/agent.js";
+import { processIncomingMessage } from "./services/messaging/handler.js";
 
 const app = express();
 app.use(express.json());
@@ -46,13 +46,7 @@ app.listen(port, process.env.API_HOST || "0.0.0.0", () => {
           const msg = provider.parseIncoming({ message: ctx.message });
           if (!msg) return;
 
-          try {
-            const response = await handleChatMessage(pool, msg.senderId, msg.text);
-            await provider.send(msg.senderId, response);
-          } catch (err) {
-            console.error("Chat agent error:", err);
-            await provider.send(msg.senderId, "Sorry, something went wrong. Try again.").catch(console.error);
-          }
+          await processIncomingMessage(pool, provider, msg);
         });
 
         bot.start();

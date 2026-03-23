@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { DB } from "../db/client.js";
 import type { MessagingProvider } from "../services/messaging/index.js";
-import { handleChatMessage } from "../services/agent.js";
+import { processIncomingMessage } from "../services/messaging/handler.js";
 
 export function chatRouter(db: DB, provider: MessagingProvider): Router {
   const router = Router();
@@ -14,12 +14,7 @@ export function chatRouter(db: DB, provider: MessagingProvider): Router {
 
     if (!msg) return;
 
-    handleChatMessage(db, msg.senderId, msg.text)
-      .then((response) => provider.send(msg.senderId, response))
-      .catch((err) => {
-        console.error("Chat agent error:", err);
-        provider.send(msg.senderId, "Sorry, something went wrong. Try again.").catch(console.error);
-      });
+    processIncomingMessage(db, provider, msg);
   });
 
   // Chat history for debugging
