@@ -44,7 +44,7 @@ describe("chatRouter webhook", () => {
 
     const handler = webhookLayer!.route!.stack[0].handle;
     const { req, res } = fakeReqRes({ foo: "bar" });
-    handler(req, res);
+    handler(req, res, () => {});
 
     expect(provider.parseIncoming).toHaveBeenCalledWith({ foo: "bar" });
   });
@@ -61,7 +61,7 @@ describe("chatRouter webhook", () => {
     );
     const handler = webhookLayer!.route!.stack[0].handle;
     const { req, res } = fakeReqRes({ some: "payload" });
-    handler(req, res);
+    handler(req, res, () => {});
 
     await new Promise((r) => setTimeout(r, 50));
 
@@ -83,7 +83,7 @@ describe("chatRouter webhook", () => {
 
     process.env.WHATSAPP_OWNER_JID = "different_owner";
     const { req, res } = fakeReqRes({});
-    handler(req, res);
+    handler(req, res, () => {});
     await new Promise((r) => setTimeout(r, 50));
 
     // Should still process - route no longer checks WHATSAPP_OWNER_JID
