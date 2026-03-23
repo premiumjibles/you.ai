@@ -1,4 +1,4 @@
-# Dorjee.ai
+# You.ai
 
 Personal AI assistant POC that delivers daily briefings, natural language contact search (semantic + fuzzy), and AI-drafted outreach messages with human-in-the-loop approval via WhatsApp.
 
@@ -90,7 +90,7 @@ All routes are prefixed with `/api` except health.
 | `EMBEDDING_DIMENSIONS` | Embedding vector size (default: `1536`) |
 | `API_PORT` / `API_HOST` | API server bind address (default: `3000` / `0.0.0.0`) |
 | `EVOLUTION_API_URL` / `KEY` | Evolution API connection for WhatsApp integration |
-| `EVOLUTION_INSTANCE` | Evolution API instance name (default: `dorjee`) |
+| `EVOLUTION_INSTANCE` | Evolution API instance name (default: `youai`) |
 | `WHATSAPP_OWNER_JID` | WhatsApp JID of the bot owner |
 | `BRIEFING_HISTORY_COUNT` | Number of past briefings included as context (default: `5`) |
 | `BRIEFING_CRON` | Cron expression for morning briefing (default: `0 7 * * *`) |

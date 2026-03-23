@@ -11,7 +11,7 @@ export class WhatsAppProvider implements MessagingProvider {
   async init(): Promise<void> {
     this.ownerJid = process.env.WHATSAPP_OWNER_JID || "";
     this.baseUrl = process.env.EVOLUTION_API_URL || "";
-    this.instance = process.env.EVOLUTION_INSTANCE || "dorjee";
+    this.instance = process.env.EVOLUTION_INSTANCE || "youai";
     this.apiKey = process.env.EVOLUTION_API_KEY || "";
 
     const missing = [];

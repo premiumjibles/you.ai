@@ -3,14 +3,17 @@ import type pg from "pg";
 import { searchContacts } from "./search.js";
 import { draftOutreach } from "./claude.js";
 import { scrub } from "./scrubber.js";
+import { searchWeb } from "./search-web.js";
 
 const anthropic = new Anthropic();
 
-const SYSTEM_PROMPT = `You are Dorjee's personal AI assistant. You help manage contacts, search for people in the network, draft outreach messages, and provide briefing summaries.
+const SYSTEM_PROMPT = `You are the user's personal AI assistant. You help manage contacts, search for people in the network, draft outreach messages, and provide briefing summaries.
 
 When the user asks about people, search for them. When they ask you to draft messages, use the outreach tool. Be concise and conversational — this is WhatsApp, not email.
 
-If the user wants to add or manage briefing topics, use the sub-agent management tool.`;
+If the user wants to add or manage briefing topics, use the sub-agent management tool. Valid topic types are: market_tracker, network_activity, web_search, and custom. Use web_search for topics that need current information from the internet (news, weather, events, etc.).
+
+You can search the web for current information using the web_search tool. Use it when the user asks about recent events, news, weather, or anything time-sensitive.`;
 
 const tools: Anthropic.Tool[] = [
   {
@@ -70,6 +73,17 @@ const tools: Anthropic.Tool[] = [
         query: { type: "string", description: "Search query to find matching contacts" },
       },
       required: ["campaign_goal", "query"],
+    },
+  },
+  {
+    name: "web_search",
+    description: "Search the web for current information. Use this when the user asks about recent events, news, weather, or anything that requires up-to-date information.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string", description: "The search query" },
+      },
+      required: ["query"],
     },
   },
 ];
@@ -148,6 +162,16 @@ async function executeTool(db: pg.Pool, name: string, input: any): Promise<strin
         drafts.push({ contact: { name: contact.name, company: contact.company }, draft: scrub(draft) });
       }
       return JSON.stringify(drafts);
+    }
+
+    case "web_search": {
+      try {
+        const results = await searchWeb(input.query);
+        if (results.length === 0) return "No web results found for that query.";
+        return JSON.stringify(results);
+      } catch (err: any) {
+        return err.message || "Web search failed.";
+      }
     }
 
     default:

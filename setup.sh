@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== Dorjee.ai POC Setup ==="
+echo "=== You.ai POC Setup ==="
 
 # Check prerequisites
 command -v docker >/dev/null 2>&1 || { echo "Docker required. Install: https://docs.docker.com/get-docker/"; exit 1; }

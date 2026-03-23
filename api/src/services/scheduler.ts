@@ -2,6 +2,7 @@ import cron from "node-cron";
 import type pg from "pg";
 import { consolidateBriefing } from "./claude.js";
 import type { MessagingProvider } from "./messaging/index.js";
+import { searchWeb } from "./search-web.js";
 
 export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
   const briefingCron = process.env.BRIEFING_CRON || "0 7 * * *";
@@ -105,6 +106,20 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
           `- ${r.name}: ${r.summary || "interaction recorded"} (${new Date(r.created_at).toLocaleTimeString()})`
       );
       return lines.join("\n");
+    }
+
+    case "web_search": {
+      const query = config.query || agent.name;
+      try {
+        const results = await searchWeb(query, { searchDepth: config.search_depth });
+        if (results.length === 0) return "No web results found.";
+        const lines = results.map(
+          (r) => `**${r.title}**\n${r.url}\n${r.content}`
+        );
+        return lines.join("\n\n");
+      } catch (err: any) {
+        return err.message || "Web search failed.";
+      }
     }
 
     case "custom": {

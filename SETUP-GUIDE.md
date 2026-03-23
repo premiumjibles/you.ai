@@ -1,4 +1,4 @@
-# Dorjee.ai — Setup Guide
+# You.ai — Setup Guide
 
 Step-by-step deployment guide based on real deployment experience. Covers a fresh Hetzner VPS (or similar) running Linux.
 
@@ -93,7 +93,7 @@ All commands below run on the server. The API key variable is read from your `.e
 ```bash
 APIKEY=$(grep EVOLUTION_API_KEY .env | cut -d= -f2)
 INSTANCE=$(grep EVOLUTION_INSTANCE .env | cut -d= -f2)
-INSTANCE=${INSTANCE:-dorjee}
+INSTANCE=${INSTANCE:-youai}
 
 curl -s -X POST http://localhost:8080/instance/create \
   -H "apikey: $APIKEY" \
@@ -176,7 +176,7 @@ Tell Evolution API to forward incoming WhatsApp messages to your API service:
 ```bash
 APIKEY=$(grep EVOLUTION_API_KEY .env | cut -d= -f2)
 INSTANCE=$(grep EVOLUTION_INSTANCE .env | cut -d= -f2)
-INSTANCE=${INSTANCE:-dorjee}
+INSTANCE=${INSTANCE:-youai}
 
 curl -s -X POST http://localhost:8080/webhook/set/$INSTANCE \
   -H "apikey: $APIKEY" \
