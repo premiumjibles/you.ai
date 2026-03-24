@@ -32,6 +32,7 @@ export function DropZone({ onUploadComplete }: DropZoneProps) {
       const data = await res.json();
       setState("success");
       setResult(`Imported ${data.total ?? data.contacts_created ?? "?"} records` + (data.merged ? `, ${data.merged} duplicates merged` : ""));
+      if (fileRef.current) fileRef.current.value = "";
       onUploadComplete();
     } catch (err: any) {
       setState("error");

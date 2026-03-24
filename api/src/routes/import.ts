@@ -11,6 +11,13 @@ import { upsertContact } from "../services/ingestion.js";
 
 const upload = multer({ dest: "/tmp/uploads", limits: { fileSize: 500 * 1024 * 1024 } });
 
+async function recordImport(db: DB, filename: string, fileType: string, recordsImported: number, duplicatesMerged: number) {
+  await db.query(
+    "INSERT INTO import_history (filename, file_type, records_imported, duplicates_merged) VALUES ($1, $2, $3, $4)",
+    [filename, fileType, recordsImported, duplicatesMerged]
+  );
+}
+
 export function importRouter(db: DB): Router {
   const router = Router();
 
@@ -29,10 +36,7 @@ export function importRouter(db: DB): Router {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       const result = await parseMbox(req.file.path, db);
-      await db.query(
-        "INSERT INTO import_history (filename, file_type, records_imported, duplicates_merged) VALUES ($1, $2, $3, $4)",
-        [req.file.originalname, "mbox", result.contacts, 0]
-      );
+      await recordImport(db, req.file.originalname, "mbox", result.contacts, 0);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -45,10 +49,7 @@ export function importRouter(db: DB): Router {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       const result = await parseIcs(req.file.path, db);
-      await db.query(
-        "INSERT INTO import_history (filename, file_type, records_imported, duplicates_merged) VALUES ($1, $2, $3, $4)",
-        [req.file.originalname, "ics", result.contacts, 0]
-      );
+      await recordImport(db, req.file.originalname, "ics", result.contacts, 0);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -85,10 +86,7 @@ export function importRouter(db: DB): Router {
       }
       const created = results.filter((r) => r.action === "created").length;
       const merged = results.filter((r) => r.action === "merged").length;
-      await db.query(
-        "INSERT INTO import_history (filename, file_type, records_imported, duplicates_merged) VALUES ($1, $2, $3, $4)",
-        [req.file.originalname, "csv", created + merged, merged]
-      );
+      await recordImport(db, req.file.originalname, "csv", created + merged, merged);
       res.json({
         total: results.length,
         created,

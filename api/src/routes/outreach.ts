@@ -81,7 +81,7 @@ export function outreachRouter(db: DB): Router {
         query += " WHERE d.status = $1";
         params.push(status);
       }
-      query += " ORDER BY d.created_at DESC";
+      query += " ORDER BY d.created_at DESC LIMIT 100";
 
       const { rows } = await db.query(query, params);
       res.json({ drafts: rows });

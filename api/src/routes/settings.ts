@@ -17,9 +17,9 @@ export function settingsRouter(db: DB): Router {
   router.patch("/", async (req, res) => {
     try {
       const updates = req.body as Record<string, string>;
-      for (const [key, value] of Object.entries(updates)) {
-        await upsertSetting(db, key, value);
-      }
+      await Promise.all(
+        Object.entries(updates).map(([key, value]) => upsertSetting(db, key, value))
+      );
       const settings = await getAllSettings(db);
       res.json({ settings });
     } catch (err: any) {
