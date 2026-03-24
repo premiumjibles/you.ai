@@ -11,6 +11,25 @@ import {
   fetchNetworkActivity,
 } from "../tools/index.js";
 
+export function getUserLocalTime(now: Date, timezone: string): string {
+  return now.toLocaleTimeString("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+export function isWithinBriefingWindow(briefingTime: string, currentTime: string): boolean {
+  const [bH, bM] = briefingTime.split(":").map(Number);
+  const [cH, cM] = currentTime.split(":").map(Number);
+  const briefingMin = bH * 60 + bM;
+  const currentMin = cH * 60 + cM;
+  let diff = currentMin - briefingMin;
+  if (diff < -1435) diff += 1440; // handle midnight rollover (1440 = 24*60)
+  return diff >= 0 && diff < 5;
+}
+
 export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
   const briefingCron = process.env.BRIEFING_CRON || "0 7 * * *";
   const alertCron = process.env.ALERT_CRON || "*/15 * * * *";
