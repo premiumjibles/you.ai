@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { DB } from "../db/client.js";
+import { validateSubAgent } from "../services/sub-agent-validation.js";
 
 export function subAgentsRouter(db: DB): Router {
   const router = Router();
@@ -20,6 +21,17 @@ export function subAgentsRouter(db: DB): Router {
   router.post("/", async (req, res) => {
     try {
       const { user_id = process.env.USER_ID || "default", type, name, config = {}, workflow_id, schedule } = req.body;
+
+      const validation = await validateSubAgent(db, type, config, user_id);
+      if (!validation.ok) {
+        return res.status(409).json({
+          error: "Overlapping configuration detected",
+          overlapping_items: validation.overlappingItems,
+          existing_agent: validation.existingAgent,
+          suggestion: "merge",
+        });
+      }
+
       const { rows } = await db.query(
         `INSERT INTO sub_agents (user_id, type, name, config, workflow_id, schedule)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
