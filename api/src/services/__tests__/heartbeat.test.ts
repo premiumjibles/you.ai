@@ -1,4 +1,40 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { MessagingProvider } from "../messaging/index.js";
+
+vi.mock("../config.js", () => ({
+  getConfig: vi.fn(),
+}));
+
+vi.mock("node-cron", () => ({
+  default: { schedule: vi.fn() },
+}));
+
+function makeStubProvider(ownerAddress = "owner123"): MessagingProvider {
+  return {
+    name: "stub",
+    init: vi.fn(),
+    send: vi.fn(),
+    parseIncoming: vi.fn(),
+    getOwnerAddress: () => ownerAddress,
+  };
+}
+
+function makeStubDb(queryResults: Record<string, any> = {}) {
+  return {
+    query: vi.fn(async (sql: string) => {
+      if (sql.includes("app_settings")) {
+        return queryResults.app_settings || { rows: [] };
+      }
+      if (sql.includes("briefings")) {
+        return queryResults.briefings || { rows: [{ count: "0" }] };
+      }
+      if (sql.includes("sub_agents")) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    }),
+  } as any;
+}
 
 describe("getUserLocalTime", () => {
   it("converts UTC to Asia/Singapore (UTC+8)", async () => {
@@ -50,5 +86,55 @@ describe("isWithinBriefingWindow", () => {
   it("handles midnight rollover - briefing at 23:58, current 00:03 (5+ min)", async () => {
     const { isWithinBriefingWindow } = await import("../scheduler.js");
     expect(isWithinBriefingWindow("23:58", "00:03")).toBe(false);
+  });
+});
+
+describe("heartbeat", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("does not trigger briefing when briefing_time is not set", async () => {
+    const { getConfig } = await import("../config.js");
+    const { heartbeat } = await import("../scheduler.js");
+    const db = makeStubDb();
+    const provider = makeStubProvider();
+
+    vi.mocked(getConfig).mockResolvedValue(undefined);
+
+    await heartbeat(db, provider, "owner123");
+
+    // Should not call runMorningBriefing (no send call)
+    expect(provider.send).not.toHaveBeenCalled();
+  });
+
+  it("queries app_settings for briefing_time and timezone", async () => {
+    const { getConfig } = await import("../config.js");
+    const { heartbeat } = await import("../scheduler.js");
+    const db = makeStubDb();
+    const provider = makeStubProvider();
+
+    vi.mocked(getConfig).mockResolvedValue(undefined);
+
+    await heartbeat(db, provider, "owner123");
+
+    expect(getConfig).toHaveBeenCalledWith(db, "briefing_time");
+    expect(getConfig).toHaveBeenCalledWith(db, "timezone");
+  });
+
+  it("always runs urgent alerts even when no briefing_time set", async () => {
+    const { getConfig } = await import("../config.js");
+    const { heartbeat } = await import("../scheduler.js");
+    const db = makeStubDb();
+    const provider = makeStubProvider();
+
+    vi.mocked(getConfig).mockResolvedValue(undefined);
+
+    await heartbeat(db, provider, "owner123");
+
+    // runUrgentAlerts queries sub_agents
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("sub_agents")
+    );
   });
 });

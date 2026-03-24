@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import type pg from "pg";
 import { consolidateBriefing } from "./claude.js";
+import { getConfig } from "./config.js";
 import type { MessagingProvider } from "./messaging/index.js";
 import { searchWeb } from "./search-web.js";
 import {
@@ -28,6 +29,32 @@ export function isWithinBriefingWindow(briefingTime: string, currentTime: string
   let diff = currentMin - briefingMin;
   if (diff < -1435) diff += 1440; // handle midnight rollover (1440 = 24*60)
   return diff >= 0 && diff < 5;
+}
+
+export async function heartbeat(
+  db: pg.Pool,
+  provider: MessagingProvider,
+  ownerAddress: string
+): Promise<void> {
+  const briefingTime = await getConfig(db, "briefing_time");
+  const timezone = await getConfig(db, "timezone");
+
+  if (briefingTime && timezone) {
+    const now = new Date();
+    const currentTime = getUserLocalTime(now, timezone);
+    if (isWithinBriefingWindow(briefingTime, currentTime)) {
+      const localDate = now.toLocaleDateString("en-CA", { timeZone: timezone });
+      const { rows } = await db.query(
+        "SELECT COUNT(*) FROM briefings WHERE user_id = 'sean' AND date = $1",
+        [localDate]
+      );
+      if (parseInt(rows[0].count) === 0) {
+        await runMorningBriefing(db, provider, ownerAddress);
+      }
+    }
+  }
+
+  await runUrgentAlerts(db, provider, ownerAddress);
 }
 
 export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
