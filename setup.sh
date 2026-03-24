@@ -413,7 +413,16 @@ start_services() {
   fi
 
   echo ""
-  ui_spin "Starting services..." "${compose_cmd[@]}"
+  ui_info "Starting services..."
+  if ! "${compose_cmd[@]}" 2>&1; then
+    echo ""
+    ui_error "Failed to start services."
+    echo "  Check Docker is running: docker info"
+    echo "  Check logs: docker compose logs"
+    echo ""
+    echo "  You can try starting manually with: $compose_hint"
+    return 1
+  fi
   echo ""
   echo "  Next time, start services with: $compose_hint"
   echo ""
@@ -521,8 +530,17 @@ collect_and_write_config() {
 
 fresh_install() {
   collect_and_write_config
-  start_services
-  wait_for_services
+
+  if ! start_services; then
+    return 1
+  fi
+
+  if ! wait_for_services; then
+    echo ""
+    echo "  Your configuration is saved. You can retry with: docker compose up -d"
+    return 1
+  fi
+
   show_whats_next
 }
 
@@ -658,10 +676,10 @@ returning_user_menu() {
       local provider
       provider=$(env_get "$ENV_FILE" "MESSAGING_PROVIDER")
       MESSAGING_PROVIDER="${provider:-telegram}"
-      start_services
-      wait_for_services
-      echo ""
-      ui_success "Services are running!"
+      if start_services && wait_for_services; then
+        echo ""
+        ui_success "Services are running!"
+      fi
       ;;
     *)
       echo "Bye!"
@@ -705,8 +723,16 @@ rerun_setup() {
   [ -n "$saved_cron" ] && env_set "$ENV_FILE" "BRIEFING_CRON" "$saved_cron"
 
   # Now start services with full config applied
-  start_services
-  wait_for_services
+  if ! start_services; then
+    return 1
+  fi
+
+  if ! wait_for_services; then
+    echo ""
+    echo "  Your configuration is saved. You can retry with: docker compose up -d"
+    return 1
+  fi
+
   show_whats_next
 }
 
