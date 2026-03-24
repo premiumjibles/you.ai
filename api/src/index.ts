@@ -6,6 +6,7 @@ import { interactionsRouter } from "./routes/interactions.js";
 import { subAgentsRouter } from "./routes/sub-agents.js";
 import { importRouter } from "./routes/import.js";
 import { chatRouter } from "./routes/chat.js";
+import { settingsRouter } from "./routes/settings.js";
 import pool from "./db/client.js";
 import { startScheduler } from "./services/scheduler.js";
 import { createMessagingProvider } from "./services/messaging/index.js";
@@ -27,6 +28,7 @@ app.use("/api/interactions", interactionsRouter(pool));
 app.use("/api/sub-agents", subAgentsRouter(pool));
 app.use("/api/import", importRouter(pool));
 app.use("/api/chat", chatRouter(pool, provider));
+app.use("/api/settings", settingsRouter(pool));
 
 const port = parseInt(process.env.API_PORT || "3000");
 app.listen(port, process.env.API_HOST || "0.0.0.0", () => {
