@@ -16,7 +16,8 @@ ENV_TMP=".env.tmp"
 cleanup() {
   [ -f "$ENV_TMP" ] && rm -f "$ENV_TMP"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT TERM
 
 # ---------------------------------------------------------------------------
 # gum download function
@@ -73,13 +74,15 @@ ui_header() {
 ui_input() {
   local placeholder="$1"
   local is_password="${2:-}"
+  local rc=0
 
   if [ -n "$GUM_BIN" ]; then
     if [ "$is_password" = "password" ]; then
-      "$GUM_BIN" input --password --placeholder "$placeholder"
+      "$GUM_BIN" input --password --placeholder "$placeholder" || rc=$?
     else
-      "$GUM_BIN" input --placeholder "$placeholder"
+      "$GUM_BIN" input --placeholder "$placeholder" || rc=$?
     fi
+    if [ $rc -ge 128 ]; then kill -INT $$ 2>/dev/null; exit 130; fi
   else
     if [ "$is_password" = "password" ]; then
       read -s -r -p "$placeholder: " val
@@ -94,7 +97,10 @@ ui_input() {
 
 ui_choose() {
   if [ -n "$GUM_BIN" ]; then
-    "$GUM_BIN" choose "$@"
+    local rc=0
+    "$GUM_BIN" choose "$@" || rc=$?
+    if [ $rc -ge 128 ]; then kill -INT $$ 2>/dev/null; exit 130; fi
+    return $rc
   else
     select opt in "$@"; do
       if [ -n "$opt" ]; then
@@ -109,7 +115,10 @@ ui_choose_default() {
   local default_val="$1"
   shift
   if [ -n "$GUM_BIN" ]; then
-    "$GUM_BIN" choose --selected "$default_val" "$@"
+    local rc=0
+    "$GUM_BIN" choose --selected "$default_val" "$@" || rc=$?
+    if [ $rc -ge 128 ]; then kill -INT $$ 2>/dev/null; exit 130; fi
+    return $rc
   else
     select opt in "$@"; do
       if [ -n "$opt" ]; then
@@ -121,14 +130,30 @@ ui_choose_default() {
 }
 
 ui_confirm() {
+  local default="${2:-yes}"
   if [ -n "$GUM_BIN" ]; then
-    "$GUM_BIN" confirm "$1"
+    local rc=0
+    if [ "$default" = "no" ]; then
+      "$GUM_BIN" confirm --default=no "$1" || rc=$?
+    else
+      "$GUM_BIN" confirm "$1" || rc=$?
+    fi
+    if [ $rc -ge 128 ]; then kill -INT $$ 2>/dev/null; exit 130; fi
+    return $rc
   else
-    read -r -p "$1 (y/n): " yn
-    case "$yn" in
-      [Yy]*) return 0 ;;
-      *) return 1 ;;
-    esac
+    if [ "$default" = "no" ]; then
+      read -r -p "$1 (y/N): " yn
+      case "$yn" in
+        [Yy]*) return 0 ;;
+        *) return 1 ;;
+      esac
+    else
+      read -r -p "$1 (y/n): " yn
+      case "$yn" in
+        [Yy]*) return 0 ;;
+        *) return 1 ;;
+      esac
+    fi
   fi
 }
 
@@ -280,17 +305,18 @@ validate_email() {
 
 # Prompt for input with validation. Loops until valid or user skips (if skippable).
 # Usage: prompt_validated "prompt text" "password|text" "validator_func" [skippable]
-# Returns the validated value via stdout.
+# Sets PROMPT_RESULT with the validated value (empty string if skipped).
+PROMPT_RESULT=""
 prompt_validated() {
   local prompt="$1" input_type="$2" validator="$3" skippable="${4:-}"
-  local value
+  PROMPT_RESULT=""
 
   while true; do
+    local value
     value=$(ui_input "$prompt" "$input_type")
 
     # Allow skip if marked as skippable and input is empty
     if [ -n "$skippable" ] && [ -z "$value" ]; then
-      echo ""
       return 0
     fi
 
@@ -300,7 +326,7 @@ prompt_validated() {
     fi
 
     if $validator "$value"; then
-      echo "$value"
+      PROMPT_RESULT="$value"
       return 0
     else
       ui_error "Invalid format. Please try again."
@@ -327,7 +353,8 @@ collect_anthropic_key() {
   ui_info "Step 1: Anthropic API Key"
   echo "  Get your key from: https://console.anthropic.com → API Keys"
   echo ""
-  ANTHROPIC_KEY=$(prompt_validated "Paste your Anthropic API key" "password" "validate_anthropic_key")
+  prompt_validated "Paste your Anthropic API key" "password" "validate_anthropic_key"
+  ANTHROPIC_KEY="$PROMPT_RESULT"
 }
 
 collect_messaging_provider() {
@@ -352,14 +379,16 @@ collect_telegram() {
   echo "  2. Send /newbot and follow the prompts"
   echo "  3. BotFather will give you a token like: 123456789:ABCdef..."
   echo ""
-  TELEGRAM_TOKEN=$(prompt_validated "Paste your bot token" "password" "validate_telegram_token")
+  prompt_validated "Paste your bot token" "password" "validate_telegram_token"
+  TELEGRAM_TOKEN="$PROMPT_RESULT"
 
   echo ""
   echo "  To find your Telegram user ID:"
   echo "  1. Search for @idbot on Telegram"
   echo "  2. Send /getid — it will reply with your numeric ID"
   echo ""
-  TELEGRAM_OWNER_ID=$(prompt_validated "Enter your Telegram user ID" "text" "validate_telegram_owner_id")
+  prompt_validated "Enter your Telegram user ID" "text" "validate_telegram_owner_id"
+  TELEGRAM_OWNER_ID="$PROMPT_RESULT"
 }
 
 collect_whatsapp() {
@@ -369,7 +398,8 @@ collect_whatsapp() {
   echo "  Enter your phone number in international format (no + or spaces)."
   echo "  Example: 61412345678 (Australia), 14155551234 (US)"
   echo ""
-  WHATSAPP_PHONE=$(prompt_validated "Phone number" "text" "validate_whatsapp_phone")
+  prompt_validated "Phone number" "text" "validate_whatsapp_phone"
+  WHATSAPP_PHONE="$PROMPT_RESULT"
   WHATSAPP_JID="${WHATSAPP_PHONE}@s.whatsapp.net"
 
   echo ""
@@ -396,10 +426,12 @@ write_env() {
   # Copy template to temp file
   cp "$ENV_EXAMPLE" "$ENV_TMP"
 
-  # Auto-generate secrets
+  # Reuse existing secrets if present (avoids DB auth mismatch with existing volume)
   local pg_pass evo_key
-  pg_pass=$(openssl rand -hex 16)
-  evo_key=$(openssl rand -hex 16)
+  pg_pass=$(env_get "$ENV_FILE" "POSTGRES_PASSWORD" 2>/dev/null)
+  evo_key=$(env_get "$ENV_FILE" "EVOLUTION_API_KEY" 2>/dev/null)
+  [ -z "$pg_pass" ] && pg_pass=$(openssl rand -hex 16)
+  [ -z "$evo_key" ] && evo_key=$(openssl rand -hex 16)
 
   # Uncomment all commented key=value lines
   env_uncomment_keys "$ENV_TMP"
@@ -621,7 +653,8 @@ advanced_config() {
   local openai_prompt="OpenAI API key (Enter to skip)"
   [ -n "$existing_openai" ] && openai_prompt="OpenAI API key (Enter to keep current)"
   local openai_key
-  openai_key=$(prompt_validated "$openai_prompt" "password" "validate_openai_key" "skippable")
+  prompt_validated "$openai_prompt" "password" "validate_openai_key" "skippable"
+  openai_key="$PROMPT_RESULT"
   if [ -n "$openai_key" ]; then
     env_set "$ENV_FILE" "OPENAI_API_KEY" "$openai_key"
     ui_success "OpenAI API key saved"
@@ -642,7 +675,8 @@ advanced_config() {
   local github_prompt="GitHub token (Enter to skip)"
   [ -n "$existing_github" ] && github_prompt="GitHub token (Enter to keep current)"
   local github_token
-  github_token=$(prompt_validated "$github_prompt" "password" "validate_github_token" "skippable")
+  prompt_validated "$github_prompt" "password" "validate_github_token" "skippable"
+  github_token="$PROMPT_RESULT"
   if [ -n "$github_token" ]; then
     env_set "$ENV_FILE" "GITHUB_TOKEN" "$github_token"
     ui_success "GitHub token saved"
@@ -717,7 +751,8 @@ advanced_config() {
   local email_prompt="Email address (Enter to skip)"
   [ -n "$existing_email" ] && email_prompt="Email address (Enter to keep current)"
   local owner_email
-  owner_email=$(prompt_validated "$email_prompt" "text" "validate_email" "skippable")
+  prompt_validated "$email_prompt" "text" "validate_email" "skippable"
+  owner_email="$PROMPT_RESULT"
   if [ -n "$owner_email" ]; then
     env_set "$ENV_FILE" "OWNER_EMAIL" "$owner_email"
     ui_success "Owner email saved"
@@ -776,6 +811,7 @@ rerun_setup() {
   echo ""
   ui_info "This will reconfigure your core settings (API key, messaging provider)."
   echo "  Your optional integrations (OpenAI, GitHub, etc.) will be preserved."
+  echo "  Your database will be kept unless you choose to reset it."
   echo ""
 
   if ! ui_confirm "Continue?"; then
@@ -783,13 +819,32 @@ rerun_setup() {
     return
   fi
 
+  # Ask if they want to reset the database
+  local reset_db=false
+  echo ""
+  ui_info "Database"
+  echo "  Your database contains contacts, interactions, briefings, and chat history."
+  echo ""
+  while true; do
+    if ui_confirm "Keep existing database?"; then
+      break
+    fi
+    echo ""
+    if ui_confirm "Are you sure? This cannot be undone." "no"; then
+      reset_db=true
+      break
+    fi
+    echo ""
+  done
+
   # Save advanced config values from existing .env
-  local saved_openai saved_github saved_av saved_email saved_cron
+  local saved_openai saved_github saved_av saved_email saved_cron saved_pg_pass
   saved_openai=$(env_get "$ENV_FILE" "OPENAI_API_KEY")
   saved_github=$(env_get "$ENV_FILE" "GITHUB_TOKEN")
   saved_av=$(env_get "$ENV_FILE" "ALPHA_VANTAGE_API_KEY")
   saved_email=$(env_get "$ENV_FILE" "OWNER_EMAIL")
   saved_cron=$(env_get "$ENV_FILE" "BRIEFING_CRON")
+  saved_pg_pass=$(env_get "$ENV_FILE" "POSTGRES_PASSWORD")
 
   # Remove existing .env so collect_and_write_config treats it as new
   rm -f "$ENV_FILE"
@@ -803,6 +858,17 @@ rerun_setup() {
   [ -n "$saved_av" ] && env_set "$ENV_FILE" "ALPHA_VANTAGE_API_KEY" "$saved_av"
   [ -n "$saved_email" ] && env_set "$ENV_FILE" "OWNER_EMAIL" "$saved_email"
   [ -n "$saved_cron" ] && env_set "$ENV_FILE" "BRIEFING_CRON" "$saved_cron"
+
+  # Restore existing database password to stay in sync with the Docker volume,
+  # unless the user opted to reset the database
+  if [ "$reset_db" = true ]; then
+    echo ""
+    ui_info "Resetting database..."
+    docker compose down -v >/dev/null 2>&1 || true
+  elif [ -n "$saved_pg_pass" ]; then
+    env_set "$ENV_FILE" "POSTGRES_PASSWORD" "$saved_pg_pass"
+    env_set "$ENV_FILE" "DATABASE_URL" "postgresql://youai:${saved_pg_pass}@postgres:5432/youai"
+  fi
 
   # Now start services with full config applied
   if ! start_services; then
