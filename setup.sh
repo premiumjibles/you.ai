@@ -404,6 +404,11 @@ write_env() {
   # Uncomment all commented key=value lines
   env_uncomment_keys "$ENV_TMP"
 
+  # Clear optional keys so they don't retain placeholder values from .env.example
+  env_set "$ENV_TMP" "OPENAI_API_KEY" ""
+  env_set "$ENV_TMP" "GITHUB_TOKEN" ""
+  env_set "$ENV_TMP" "ALPHA_VANTAGE_API_KEY" ""
+
   # Core config
   env_set "$ENV_TMP" "ANTHROPIC_API_KEY" "$ANTHROPIC_KEY"
   env_set "$ENV_TMP" "MESSAGING_PROVIDER" "$MESSAGING_PROVIDER"
