@@ -15,9 +15,9 @@ if [ ! -f .env ]; then
   PG_PASS=$(openssl rand -hex 16)
   EVO_KEY=$(openssl rand -hex 16)
 
-  sed -i "s/POSTGRES_PASSWORD=changeme/POSTGRES_PASSWORD=$PG_PASS/" .env
-  sed -i "s|DATABASE_URL=postgresql://youai:changeme@|DATABASE_URL=postgresql://youai:$PG_PASS@|" .env
-  sed -i "s/EVOLUTION_API_KEY=changeme/EVOLUTION_API_KEY=$EVO_KEY/" .env
+  sed -i '' "s/POSTGRES_PASSWORD=changeme/POSTGRES_PASSWORD=$PG_PASS/" .env
+  sed -i '' "s|DATABASE_URL=postgresql://youai:changeme@|DATABASE_URL=postgresql://youai:$PG_PASS@|" .env
+  sed -i '' "s/EVOLUTION_API_KEY=changeme/EVOLUTION_API_KEY=$EVO_KEY/" .env
 
   echo "Created .env with auto-generated secrets."
   echo ""
