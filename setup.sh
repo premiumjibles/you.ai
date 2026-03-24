@@ -704,11 +704,20 @@ advanced_config() {
   echo ""
 
   # Owner email
-  ui_info "Owner Email"
+  local existing_email
+  existing_email=$(env_get "$ENV_FILE" "OWNER_EMAIL")
+  if [ -n "$existing_email" ]; then
+    ui_info_configured "Owner Email"
+    echo "  Current: $existing_email"
+  else
+    ui_info "Owner Email"
+  fi
   echo "  Your email — used to filter yourself out of contact imports."
   echo ""
+  local email_prompt="Email address (Enter to skip)"
+  [ -n "$existing_email" ] && email_prompt="Email address (Enter to keep current)"
   local owner_email
-  owner_email=$(prompt_validated "Email address (Enter to skip)" "text" "validate_email" "skippable")
+  owner_email=$(prompt_validated "$email_prompt" "text" "validate_email" "skippable")
   if [ -n "$owner_email" ]; then
     env_set "$ENV_FILE" "OWNER_EMAIL" "$owner_email"
     ui_success "Owner email saved"
