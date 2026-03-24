@@ -43,15 +43,10 @@ interface ChatMessage {
   content: string | ContentBlock[];
 }
 
-interface ContentBlock {
-  type: "text" | "tool_use" | "tool_result";
-  text?: string;
-  id?: string;           // tool_use id
-  name?: string;         // tool name
-  input?: any;           // tool input
-  tool_use_id?: string;  // for tool_result
-  content?: string;      // tool_result content
-}
+type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | { type: "tool_result"; tool_use_id: string; content: string };
 
 interface ToolDefinition {
   name: string;
@@ -76,6 +71,10 @@ interface ChatResponse {
 }
 ```
 
+`ContentBlock` is a discriminated union, not a bag of optional fields. This preserves the narrowing behavior the codebase already uses (e.g. `block.type === "text"` guarantees `block.text` exists).
+
+`stopReason` maps from provider-specific values: Anthropic's `end_turn` → `"end"`, `tool_use` → `"tool_use"`. OpenAI's `stop` → `"end"`, `tool_calls` → `"tool_use"`. All other stop reasons (`length`, `content_filter`, etc.) map to `"end"`.
+
 ### Provider interface (`provider.ts`)
 
 ```typescript
@@ -83,9 +82,11 @@ interface LLMProvider {
   name: string;
   chat(params: ChatParams): Promise<ChatResponse>;
   chatWithTools(params: ChatWithToolsParams): Promise<ChatResponse>;
-  embed(text: string, model?: string, dimensions?: number): Promise<number[] | null>;
+  embed(text: string): Promise<number[] | null>;
 }
 ```
+
+`embed()` reads `EMBEDDING_MODEL` and `EMBEDDING_DIMENSIONS` internally within each provider implementation — callers don't pass these.
 
 ### Model configuration (`models.ts`)
 
@@ -101,6 +102,8 @@ const MODEL_CONFIG = {
   },
 };
 ```
+
+Note: Venice proxies models from multiple providers. These are the model identifiers as recognized by Venice's API. `claude-sonnet-4-6` is served by Venice as a proxied Anthropic model.
 
 ### Factory (`index.ts`)
 
@@ -120,21 +123,40 @@ function getProvider(): LLMProvider {
 
 Called per-request, not cached at module level. No restart required to switch providers.
 
+**Usage pattern:** Callers should capture the provider once per request flow and reuse it, rather than calling `getProvider()` inside loops. For example, `agent.ts`'s tool-use loop should call `getProvider()` once before the loop, not on each iteration. This avoids unnecessary SDK client instantiation.
+
 ### AnthropicProvider (`anthropic.ts`)
 
 Wraps `@anthropic-ai/sdk` (existing dependency). Translates between common types and Anthropic SDK types:
 
-- `chat()` — maps `ChatMessage[]` to `Anthropic.MessageParam[]`, calls `messages.create()`, maps response to `ChatResponse`
-- `chatWithTools()` — same plus maps `ToolDefinition[]` to `Anthropic.Tool[]` (`parameters` becomes `input_schema`)
-- `embed()` — uses OpenAI SDK internally (Anthropic has no embeddings API), reads `OPENAI_API_KEY`. Returns `null` if key is not set.
+- `chat()` — maps `ChatMessage[]` to `Anthropic.MessageParam[]`, passes `system` as a top-level param to `messages.create()`, maps response to `ChatResponse`
+- `chatWithTools()` — same plus maps `ToolDefinition[]` to `Anthropic.Tool[]` (`parameters` → `input_schema`), and maps response tool_use blocks back (`input_schema` → `parameters`)
+- `embed()` — uses OpenAI SDK internally (Anthropic has no embeddings API), reads `OPENAI_API_KEY`, `EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS` from env. Returns `null` if `OPENAI_API_KEY` is not set.
 
 ### VeniceProvider (`venice.ts`)
 
-Uses the `openai` SDK (existing dependency) pointed at Venice's base URL (hardcoded) with `VENICE_API_KEY`:
+Uses the `openai` SDK (existing dependency) pointed at Venice's base URL (hardcoded: `https://api.venice.ai/api/v1`) with `VENICE_API_KEY`:
 
-- `chat()` — `chat.completions.create()`, maps response to `ChatResponse`
-- `chatWithTools()` — OpenAI-style function calling, maps tool calls back to `ContentBlock[]`
-- `embed()` — `embeddings.create()` via Venice's API
+- `chat()` — `chat.completions.create()`, prepends `system` as a `{ role: "system" }` message in the messages array, maps response to `ChatResponse`
+- `chatWithTools()` — OpenAI-style function calling, maps `ToolDefinition[]` to OpenAI `tools` format (`parameters` → `function.parameters`), maps tool call responses back to `ContentBlock[]`
+- `embed()` — `embeddings.create()` via Venice's API, reads `EMBEDDING_MODEL` and `EMBEDDING_DIMENSIONS` from env
+
+#### Tool result format translation
+
+This is the most significant translation difference between providers. In the tool-use loop:
+
+- **Our common format:** tool results are `ChatMessage` with `role: "user"` and `content: ContentBlock[]` containing `{ type: "tool_result", tool_use_id, content }` blocks. This matches Anthropic's native format.
+- **OpenAI format:** tool results are separate messages with `role: "tool"`, `tool_call_id`, and `content` fields.
+
+**AnthropicProvider** passes tool result messages through directly (native format match).
+
+**VeniceProvider** must translate:
+- **Outbound:** when it encounters a `ChatMessage` with `role: "user"` containing `tool_result` blocks, it splits each into a separate `{ role: "tool", tool_call_id, content }` message.
+- **Inbound:** when the OpenAI response contains `tool_calls`, it maps each to a `{ type: "tool_use", id, name, input }` content block.
+
+Similarly, assistant messages containing tool_use blocks must be translated:
+- **Outbound:** `ChatMessage` with `role: "assistant"` and `ContentBlock[]` containing `tool_use` blocks → OpenAI assistant message with `tool_calls` array.
+- **Inbound:** OpenAI assistant message with `tool_calls` → `ChatResponse` with `tool_use` content blocks.
 
 ## Changes to existing files
 
@@ -144,7 +166,7 @@ Uses the `openai` SDK (existing dependency) pointed at Venice's base URL (hardco
 - Import `getProvider` from `./llm/index.js`
 - Each function calls `getProvider()` at invocation time
 - All 5 API calls use `model: "fast"`
-- Response access changes from `response.content[0].type === "text" ? response.content[0].text : ""` to `response.content[0]?.text || ""`
+- Response access: discriminated union narrowing (`block.type === "text"` gives guaranteed `block.text`)
 - Prompt builder functions (`buildBriefingPrompt`, `buildOutreachPrompt`, `buildMemoPrompt`) are pure — no changes
 
 ### `services/agent.ts`
@@ -153,7 +175,8 @@ Uses the `openai` SDK (existing dependency) pointed at Venice's base URL (hardco
 - Import `getProvider` and common types from `./llm/`
 - `Anthropic.Tool[]` becomes `ToolDefinition[]` — rename `input_schema` to `parameters`
 - `Anthropic.MessageParam[]` becomes `ChatMessage[]`
-- `Anthropic.ToolResultBlockParam[]` becomes `ContentBlock[]` with `type: "tool_result"`
+- Tool result construction: `Anthropic.ToolResultBlockParam[]` becomes `ContentBlock[]` with `type: "tool_result"` — specifically `{ type: "tool_result", tool_use_id: block.id, content: result }`
+- Call `getProvider()` once before the tool-use loop, reuse for all iterations
 - Tool-use loop logic stays the same, just uses common types
 - Both calls use `model: "quality"`
 
@@ -167,8 +190,9 @@ Uses the `openai` SDK (existing dependency) pointed at Venice's base URL (hardco
 
 - Remove `import OpenAI` and `getOpenAIClient()` helper
 - Import `getProvider` from `./llm/index.js`
-- `generateEmbedding()` calls `getProvider().embed()`
-- `OPENAI_API_KEY` check moves inside `AnthropicProvider.embed()`
+- `generateEmbedding()` calls `getProvider().embed(text)` — model/dimensions handled by provider
+- `updateContactEmbedding()`: replace the `if (!process.env.OPENAI_API_KEY) return;` guard with a null check on the `embed()` return value (providers return `null` when embeddings are unavailable)
+- `batchUpdateEmbeddings()`: no changes needed (calls `updateContactEmbedding` which handles the null case)
 
 ### `.env.example`
 
@@ -189,8 +213,9 @@ Provider SDK errors are thrown as standard `Error` objects. No retry logic, no c
 ## Testing
 
 - `services/llm/__tests__/provider.test.ts` — factory returns correct provider per env var
-- Type mapping unit tests for each provider (Anthropic SDK types to/from common types, OpenAI SDK types to/from common types)
+- Type mapping unit tests for each provider (Anthropic SDK types ↔ common types, OpenAI SDK types ↔ common types)
 - Existing tests (`claude.test.ts`, `agent.test.ts`) test prompt builders and exports — unchanged
+- The LLM module must be created before or alongside the service file changes to avoid import failures in existing tests
 
 ## Out of scope
 
