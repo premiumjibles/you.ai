@@ -10,31 +10,45 @@ export async function searchWeb(
   query: string,
   opts?: { searchDepth?: "basic" | "advanced" }
 ): Promise<SearchResult[]> {
-  const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) {
-    throw new Error("Web search is not configured — set TAVILY_API_KEY to enable it.");
+  const maxResults = opts?.searchDepth === "advanced" ? 15 : 10;
+  const baseUrl = process.env.SEARXNG_URL || "http://searxng:8080";
+  const params = new URLSearchParams({
+    q: query,
+    format: "json",
+    language: "en",
+    categories: "general",
+  });
+
+  if (opts?.searchDepth === "advanced") {
+    params.set("categories", "general,news,it,science");
   }
 
-  const res = await fetch("https://api.tavily.com/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      api_key: apiKey,
-      query,
-      search_depth: opts?.searchDepth || "advanced",
-      max_results: 5,
-    }),
-  });
+  const res = await fetch(`${baseUrl}/search?${params}`);
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Tavily API error (${res.status}): ${text}`);
+    throw new Error(`SearXNG error (${res.status}): ${text}`);
   }
 
   const data = await res.json();
-  return (data.results || []).map((r: any) => ({
-    title: r.title || "",
-    url: r.url || "",
-    content: (r.content || "").slice(0, MAX_CONTENT_LENGTH),
-  }));
+
+  // SearXNG returns results pre-sorted by score (multi-engine agreement).
+  // Deduplicate by normalized URL.
+  const seen = new Set<string>();
+  const results: SearchResult[] = [];
+  for (const r of data.results || []) {
+    const url: string = r.url || "";
+    if (!url || !r.title) continue;
+    const key = url.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({
+      title: r.title,
+      url,
+      content: (r.content || "").slice(0, MAX_CONTENT_LENGTH),
+    });
+    if (results.length >= maxResults) break;
+  }
+
+  return results;
 }

@@ -1,0 +1,96 @@
+use_default_settings: true
+
+server:
+  secret_key: "searxng-youai-secret-change-me"
+  limiter: false
+
+search:
+  default_lang: en
+  formats:
+    - html
+    - json
+
+outgoing:
+  request_timeout: 8
+  useragent_suffix: ""
+
+engines:
+  # --- Disabled: blocked or broken from this server ---
+  - name: google
+    disabled: true
+  - name: google news
+    disabled: true
+  - name: google scholar
+    disabled: true
+  - name: duckduckgo
+    disabled: true
+  - name: duckduckgo news
+    disabled: true
+  - name: brave
+    disabled: true
+  - name: brave.news
+    disabled: true
+  - name: qwant
+    disabled: true
+  - name: qwant news
+    disabled: true
+  - name: yep
+    disabled: true
+  - name: mwmbl
+    disabled: true
+  - name: ask
+    disabled: true
+  - name: seznam
+    disabled: true
+  - name: presearch
+    disabled: true
+  - name: presearch news
+    disabled: true
+
+  # Bing returns Chinese results from this server's IP — disable
+  - name: bing
+    disabled: true
+  - name: bing news
+    disabled: true
+
+  # --- Core general web search ---
+  - name: startpage
+    disabled: false
+  - name: mojeek
+    disabled: false
+
+  # --- News (all working) ---
+  - name: reuters
+    disabled: false
+  - name: wikinews
+    disabled: false
+  - name: startpage news
+    disabled: false
+  - name: yahoo news
+    disabled: false
+
+  # --- IT / dev (all working, high quality) ---
+  - name: github
+    disabled: false
+  - name: stackoverflow
+    disabled: false
+  - name: hackernews
+    disabled: false
+  - name: mdn
+    disabled: false
+  - name: npm
+    disabled: false
+
+  # --- Science / academic ---
+  - name: arxiv
+    disabled: false
+  - name: semantic scholar
+    disabled: false
+
+  # --- Reference ---
+  - name: wikipedia
+    disabled: false
+  - name: wikidata
+    disabled: false
+  - name: wolframalpha
+    disabled: false
