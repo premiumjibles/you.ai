@@ -414,10 +414,15 @@ find_available_port() {
 }
 
 start_services() {
-  # Check if the configured API port is available, find next if not
-  local api_port
-  api_port=$(env_get "$ENV_FILE" "API_PORT")
-  api_port="${api_port:-3000}"
+  # Stop any existing services first to free ports
+  if docker compose ps --quiet 2>/dev/null | grep -q .; then
+    ui_info "Stopping existing services..."
+    docker compose down >/dev/null 2>&1 || true
+  fi
+
+  # Reset API_PORT to default before checking availability
+  env_set "$ENV_FILE" "API_PORT" "3000"
+  local api_port="3000"
 
   local available_port
   available_port=$(find_available_port "$api_port")
