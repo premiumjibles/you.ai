@@ -61,6 +61,12 @@ install_gum() {
 # TUI wrapper functions with fallback
 # ---------------------------------------------------------------------------
 
+# Exit on signal-kill exit codes (e.g. 130 from Ctrl+C).
+# Called after every gum invocation to propagate interrupts through subshells.
+gum_check_interrupt() {
+  if [ $1 -ge 128 ]; then kill -INT $$ 2>/dev/null; exit 130; fi
+}
+
 ui_header() {
   if [ -n "$GUM_BIN" ]; then
     "$GUM_BIN" style --bold --foreground 212 --border double --align center --padding "1 4" "$1"
@@ -82,7 +88,7 @@ ui_input() {
     else
       "$GUM_BIN" input --placeholder "$placeholder" || rc=$?
     fi
-    if [ $rc -ge 128 ]; then kill -INT $$ 2>/dev/null; exit 130; fi
+    gum_check_interrupt $rc
   else
     if [ "$is_password" = "password" ]; then
       read -s -r -p "$placeholder: " val
@@ -99,7 +105,7 @@ ui_choose() {
   if [ -n "$GUM_BIN" ]; then
     local rc=0
     "$GUM_BIN" choose "$@" || rc=$?
-    if [ $rc -ge 128 ]; then kill -INT $$ 2>/dev/null; exit 130; fi
+    gum_check_interrupt $rc
     return $rc
   else
     select opt in "$@"; do
@@ -117,7 +123,7 @@ ui_choose_default() {
   if [ -n "$GUM_BIN" ]; then
     local rc=0
     "$GUM_BIN" choose --selected "$default_val" "$@" || rc=$?
-    if [ $rc -ge 128 ]; then kill -INT $$ 2>/dev/null; exit 130; fi
+    gum_check_interrupt $rc
     return $rc
   else
     select opt in "$@"; do
@@ -138,22 +144,16 @@ ui_confirm() {
     else
       "$GUM_BIN" confirm "$1" || rc=$?
     fi
-    if [ $rc -ge 128 ]; then kill -INT $$ 2>/dev/null; exit 130; fi
+    gum_check_interrupt $rc
     return $rc
   else
-    if [ "$default" = "no" ]; then
-      read -r -p "$1 (y/N): " yn
-      case "$yn" in
-        [Yy]*) return 0 ;;
-        *) return 1 ;;
-      esac
-    else
-      read -r -p "$1 (y/n): " yn
-      case "$yn" in
-        [Yy]*) return 0 ;;
-        *) return 1 ;;
-      esac
-    fi
+    local hint="(y/n)"
+    [ "$default" = "no" ] && hint="(y/N)"
+    read -r -p "$1 $hint: " yn
+    case "$yn" in
+      [Yy]*) return 0 ;;
+      *) return 1 ;;
+    esac
   fi
 }
 
@@ -840,13 +840,13 @@ rerun_setup() {
   done
 
   # Save advanced config values from existing .env
-  local saved_openai saved_github saved_av saved_email saved_cron saved_pg_pass
+  # (write_env already preserves POSTGRES_PASSWORD and EVOLUTION_API_KEY)
+  local saved_openai saved_github saved_av saved_email saved_cron
   saved_openai=$(env_get "$ENV_FILE" "OPENAI_API_KEY")
   saved_github=$(env_get "$ENV_FILE" "GITHUB_TOKEN")
   saved_av=$(env_get "$ENV_FILE" "ALPHA_VANTAGE_API_KEY")
   saved_email=$(env_get "$ENV_FILE" "OWNER_EMAIL")
   saved_cron=$(env_get "$ENV_FILE" "BRIEFING_CRON")
-  saved_pg_pass=$(env_get "$ENV_FILE" "POSTGRES_PASSWORD")
 
   # Collect new core config and write .env (overwrites existing .env)
   if ! collect_and_write_config; then
@@ -860,15 +860,10 @@ rerun_setup() {
   [ -n "$saved_email" ] && env_set "$ENV_FILE" "OWNER_EMAIL" "$saved_email"
   [ -n "$saved_cron" ] && env_set "$ENV_FILE" "BRIEFING_CRON" "$saved_cron"
 
-  # Restore existing database password to stay in sync with the Docker volume,
-  # unless the user opted to reset the database
   if [ "$reset_db" = true ]; then
     echo ""
     ui_info "Resetting database..."
     docker compose down -v >/dev/null 2>&1 || true
-  elif [ -n "$saved_pg_pass" ]; then
-    env_set "$ENV_FILE" "POSTGRES_PASSWORD" "$saved_pg_pass"
-    env_set "$ENV_FILE" "DATABASE_URL" "postgresql://youai:${saved_pg_pass}@postgres:5432/youai"
   fi
 
   # Now start services with full config applied
