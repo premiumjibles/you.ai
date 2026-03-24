@@ -1,12 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type pg from "pg";
 import { searchContacts } from "./search.js";
 import { draftOutreach } from "./claude.js";
 import { scrub } from "./scrubber.js";
 import { searchWeb } from "./search-web.js";
 import { generateBriefing } from "./scheduler.js";
-
-const anthropic = new Anthropic();
+import { getProvider } from "./llm/index.js";
+import type { LLMProvider, ToolDefinition, ChatMessage, ContentBlock } from "./llm/index.js";
 
 const SYSTEM_PROMPT = `You are the user's personal AI assistant. You help manage contacts, search for people in the network, draft outreach messages, and provide briefing summaries.
 
@@ -20,11 +19,11 @@ You can search the web for current information using the web_search tool. Use it
 
 When the user asks who knows someone, about mutual connections, or connective questions like "do I know anyone who also knows X", first search for the contact, then use the mutual_connections tool with their contact ID.`;
 
-const tools: Anthropic.Tool[] = [
+const tools: ToolDefinition[] = [
   {
     name: "contact_search",
     description: "Search the contact database by name, company, role, location, or interests. Use for any query about people in the network.",
-    input_schema: {
+    parameters: {
       type: "object" as const,
       properties: {
         query: { type: "string", description: "The search query — a name, company, location, or interest" },
@@ -35,7 +34,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "interaction_history",
     description: "Get recent interactions (emails, meetings, messages) with a specific contact.",
-    input_schema: {
+    parameters: {
       type: "object" as const,
       properties: {
         contact_id: { type: "string", description: "The contact's UUID" },
@@ -46,7 +45,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "sub_agent_management",
     description: "Manage briefing topics (sub-agents). List current topics, add new ones, or deactivate existing ones.",
-    input_schema: {
+    parameters: {
       type: "object" as const,
       properties: {
         action: { type: "string", enum: ["list", "create", "deactivate"], description: "The action to perform" },
@@ -61,7 +60,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "briefing_history",
     description: "Get recent daily briefings.",
-    input_schema: {
+    parameters: {
       type: "object" as const,
       properties: {
         limit: { type: "number", description: "Number of briefings to retrieve (default 5)" },
@@ -71,7 +70,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "outreach_draft",
     description: "Draft personalized outreach messages for contacts matching a query.",
-    input_schema: {
+    parameters: {
       type: "object" as const,
       properties: {
         campaign_goal: { type: "string", description: "What the outreach is for" },
@@ -83,7 +82,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "mutual_connections",
     description: "Find people who appear in the same meetings or email threads as a given contact. Use this for connective questions like 'who else knows X' or 'do I know anyone who also knows X'.",
-    input_schema: {
+    parameters: {
       type: "object" as const,
       properties: {
         contact_id: { type: "string", description: "The contact's UUID to find mutual connections for" },
@@ -94,7 +93,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "trigger_briefing",
     description: "Generate and deliver the daily briefing right now, on demand. Use this when the user asks for their briefing, digest, or summary outside the normal schedule.",
-    input_schema: {
+    parameters: {
       type: "object" as const,
       properties: {},
     },
@@ -102,7 +101,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "web_search",
     description: "Search the web for current information. Use this when the user asks about recent events, news, weather, or anything that requires up-to-date information.",
-    input_schema: {
+    parameters: {
       type: "object" as const,
       properties: {
         query: { type: "string", description: "The search query" },
@@ -233,31 +232,33 @@ export async function handleChatMessage(
     [sessionId]
   );
 
-  const messages: Anthropic.MessageParam[] = history.map((row) => ({
+  const messages: ChatMessage[] = history.map((row) => ({
     role: row.role as "user" | "assistant",
     content: row.content,
   }));
   messages.push({ role: "user", content: userMessage });
 
-  let response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+  const provider = getProvider();
+
+  let response = await provider.chatWithTools({
+    model: "quality",
+    maxTokens: 1024,
     system: SYSTEM_PROMPT,
     tools,
     messages,
   });
 
   let iterations = 0;
-  while (response.stop_reason === "tool_use" && iterations < 10) {
+  while (response.stopReason === "tool_use" && iterations < 10) {
     iterations++;
 
     const toolUseBlocks = response.content.filter(
-      (block): block is Anthropic.ContentBlock & { type: "tool_use" } => block.type === "tool_use"
+      (block): block is Extract<ContentBlock, { type: "tool_use" }> => block.type === "tool_use"
     );
 
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    const toolResults: ContentBlock[] = [];
     for (const block of toolUseBlocks) {
-      const result = await executeTool(db, block.name, block.input);
+      const result = await executeTool(db, block.name, block.input as any);
       toolResults.push({
         type: "tool_result",
         tool_use_id: block.id,
@@ -268,9 +269,9 @@ export async function handleChatMessage(
     messages.push({ role: "assistant", content: response.content });
     messages.push({ role: "user", content: toolResults });
 
-    response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 4096,
+    response = await provider.chatWithTools({
+      model: "quality",
+      maxTokens: 1024,
       system: SYSTEM_PROMPT,
       tools,
       messages,
@@ -278,7 +279,7 @@ export async function handleChatMessage(
   }
 
   const textBlocks = response.content.filter(
-    (block): block is Anthropic.TextBlock => block.type === "text"
+    (block): block is Extract<ContentBlock, { type: "text" }> => block.type === "text"
   );
   const assistantMessage = textBlocks.map((b) => b.text).join("\n") || "I couldn't generate a response.";
 
