@@ -5,3 +5,4 @@ dist/
 postgres-data/
 n8n-data/
 .gum/
+docs/superpowers/plans/
