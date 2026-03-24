@@ -20,6 +20,7 @@
     "node-ical": "^0.18.0",
     "openai": "^4.77.0",
     "pg": "^8.13.0",
+    "rss-parser": "^3.13.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
