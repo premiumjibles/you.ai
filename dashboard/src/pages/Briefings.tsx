@@ -23,7 +23,11 @@ export default function Briefings() {
       <HeroCard content={briefing?.content ?? null} isToday={date === today} loading={loading} onGenerated={refetch} />
       {outputs.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {outputs.map((output, i) => (<SourceCard key={i} name={output.name} output={output.output} type={output.type} />))}
+          {outputs.map((output, i) => (
+            <div key={i} className="animate-fade-in-up" style={{ '--stagger': i } as React.CSSProperties}>
+              <SourceCard name={output.name} output={output.output} type={output.type} />
+            </div>
+          ))}
         </div>
       )}
       {!loading && !briefing && outputs.length === 0 && (

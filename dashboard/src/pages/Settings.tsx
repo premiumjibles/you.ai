@@ -30,7 +30,7 @@ export default function Settings() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-xl font-semibold mb-6">Settings</h1>
+      <h1 className="text-xl font-semibold text-balance mb-6">Settings</h1>
       <div className="space-y-4">
         <SettingsSection title="LLM Provider" defaultOpen>
           <ProviderForm label="Provider" options={["anthropic", "venice"]} envKey="LLM_PROVIDER"
@@ -46,7 +46,7 @@ export default function Settings() {
         <SettingsSection title="Data Sources" defaultOpen>
           <div className="space-y-3">
             {agentData?.sub_agents?.map((agent) => (
-              <div key={agent.id} className="flex items-center justify-between p-3 bg-[#0a0a0f] rounded-lg border border-[#1e1e2e]">
+              <div key={agent.id} className="flex items-center justify-between p-3 bg-[#0a0a0f] rounded-lg card-shadow">
                 <div>
                   <div className="text-sm text-[#e2e8f0]">{agent.name}</div>
                   <div className="text-[10px] uppercase tracking-wider text-[#666] mt-0.5">{agent.type}</div>

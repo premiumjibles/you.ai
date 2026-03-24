@@ -21,7 +21,7 @@ export function SourceCard({ name, output, type }: SourceCardProps) {
   const preview = output.split("\n").slice(0, 2).join(" ").slice(0, 100);
 
   return (
-    <button onClick={() => setExpanded(!expanded)} className="w-full text-left rounded-lg bg-[#111118] border border-[#1e1e2e] p-4 hover:border-[#2a2a3e] transition-colors">
+    <button onClick={() => setExpanded(!expanded)} className="w-full text-left rounded-lg bg-[#111118] card-shadow card-shadow-hover p-4 transition-all">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="text-[10px] uppercase tracking-widest font-medium mb-2" style={{ color }}>{label}</div>

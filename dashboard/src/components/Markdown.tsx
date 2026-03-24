@@ -4,9 +4,9 @@ export function Markdown({ children }: { children: string }) {
   return (
     <ReactMarkdown
       components={{
-        h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 text-white">{children}</h1>,
-        h2: ({ children }) => <h2 className="text-xl font-semibold mb-3 text-white">{children}</h2>,
-        h3: ({ children }) => <h3 className="text-lg font-semibold mb-2 text-white">{children}</h3>,
+        h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 text-white text-balance">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-xl font-semibold mb-3 text-white text-balance">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-lg font-semibold mb-2 text-white text-balance">{children}</h3>,
         p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
         strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
         em: ({ children }) => <em className="italic">{children}</em>,

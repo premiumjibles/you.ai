@@ -13,7 +13,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex h-screen bg-[#0a0a0f] text-[#e2e8f0] overflow-hidden">
+      <div className="flex h-screen bg-[#0a0a0f] text-[#e2e8f0] antialiased overflow-hidden">
         <Sidebar hasGithub={hasGithub} />
         <main className="flex-1 overflow-y-auto p-6 pb-20 md:pb-6">
           <Routes>

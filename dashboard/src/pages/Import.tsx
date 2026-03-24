@@ -73,7 +73,7 @@ export default function Import() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h1 className="text-xl font-semibold mb-2">Import</h1>
+      <h1 className="text-xl font-semibold text-balance mb-2">Import</h1>
       <p className="text-sm text-[#999] mb-6">
         Import your contacts and interaction history from multiple sources. Duplicates are automatically detected and merged.
       </p>
@@ -83,8 +83,8 @@ export default function Import() {
       <div className="mt-10">
         <h2 className="text-sm font-medium text-[#999] mb-4">Supported Sources</h2>
         <div className="grid gap-4">
-          {sources.map((source) => (
-            <div key={source.title} className="rounded-lg border border-[#1e1e2e] bg-[#111118] p-4">
+          {sources.map((source, i) => (
+            <div key={source.title} className="rounded-lg bg-[#111118] card-shadow p-4 animate-fade-in-up" style={{ '--stagger': i } as React.CSSProperties}>
               <div className="flex items-start gap-3">
                 <source.icon size={18} className="text-[#666] mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
@@ -144,7 +144,7 @@ export default function Import() {
       {data?.imports && data.imports.length > 0 && (
         <div className="mt-10">
           <h2 className="text-sm font-medium text-[#999] mb-3">Import History</h2>
-          <div className="rounded-lg border border-[#1e1e2e] overflow-hidden">
+          <div className="rounded-lg card-shadow overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#111118] text-[#666] text-xs uppercase tracking-wider">
@@ -159,8 +159,8 @@ export default function Import() {
                     <td className="p-3 text-[#999]">{new Date(imp.created_at).toLocaleDateString()}</td>
                     <td className="p-3 text-[#e2e8f0]">{imp.filename}</td>
                     <td className="p-3"><span className="text-[10px] uppercase tracking-wider bg-[#1e1e2e] px-2 py-0.5 rounded text-[#999]">{imp.file_type}</span></td>
-                    <td className="p-3 text-right text-[#e2e8f0]">{imp.records_imported}</td>
-                    <td className="p-3 text-right text-[#666]">{imp.duplicates_merged}</td>
+                    <td className="p-3 text-right text-[#e2e8f0] tabular-nums">{imp.records_imported}</td>
+                    <td className="p-3 text-right text-[#666] tabular-nums">{imp.duplicates_merged}</td>
                   </tr>
                 ))}
               </tbody>
