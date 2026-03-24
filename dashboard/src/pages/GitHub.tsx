@@ -37,7 +37,7 @@ function RepoCardWithData({ repo }: { repo: string }) {
 export default function GitHub() {
   const { data: agentData } = useApi<{ sub_agents: SubAgent[] }>("/api/sub-agents");
   const githubAgents = agentData?.sub_agents?.filter((a) => a.type === "github_activity") ?? [];
-  const repos = githubAgents.flatMap((a) => a.config.repos ?? []);
+  const repos = [...new Set(githubAgents.flatMap((a) => a.config.repos ?? []))];
 
   return (
     <div className="max-w-4xl mx-auto">
