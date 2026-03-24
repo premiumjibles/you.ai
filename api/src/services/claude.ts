@@ -96,7 +96,7 @@ export async function consolidateBriefing(
 ): Promise<string> {
   const prompt = buildBriefingPrompt(outputs, history);
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 2000,
     messages: [{ role: "user", content: prompt }],
   });
@@ -110,7 +110,7 @@ export async function draftOutreach(
 ): Promise<string> {
   const prompt = buildOutreachPrompt(campaignGoal, contact, interactions);
   const response = await anthropic.messages.create({
-    model: "claude-opus-4-6-20260401",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 500,
     messages: [{ role: "user", content: prompt }],
   });
@@ -195,7 +195,7 @@ export async function generateMemo(
 ): Promise<string> {
   const prompt = buildMemoPrompt(company, contacts, contactInteractions, webContext);
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6-20260401",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 2000,
     messages: [{ role: "user", content: prompt }],
   });
