@@ -13,6 +13,7 @@ import {
   fetchRssFeeds,
   fetchNetworkActivity,
 } from "../tools/index.js";
+import { getConfig, upsertSetting } from "./config.js";
 
 const anthropic = new Anthropic();
 
@@ -155,10 +156,23 @@ const tools: Anthropic.Tool[] = [
       required: ["query"],
     },
   },
+  {
+    name: "briefing_schedule",
+    description: "Get or set the daily briefing delivery time.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string", enum: ["get", "set"], description: "Whether to read or update the schedule" },
+        time: { type: "string", description: "Delivery time in 24h format e.g. '07:00' (required for set)" },
+        timezone: { type: "string", description: "IANA timezone e.g. 'Asia/Singapore' (required for first set)" },
+      },
+      required: ["action"],
+    },
+  },
   ...dataTools,
 ];
 
-async function executeTool(db: pg.Pool, name: string, input: any): Promise<string> {
+export async function executeTool(db: pg.Pool, name: string, input: any): Promise<string> {
   switch (name) {
     case "contact_search": {
       const results = await searchContacts(db, {
@@ -293,6 +307,27 @@ async function executeTool(db: pg.Pool, name: string, input: any): Promise<strin
 
     case "network_activity":
       return await fetchNetworkActivity(db, input);
+
+    case "briefing_schedule": {
+      if (input.action === "get") {
+        const time = await getConfig(db, "briefing_time");
+        const tz = await getConfig(db, "timezone");
+        return JSON.stringify({
+          briefing_time: time || "not set",
+          timezone: tz || "not set",
+        });
+      }
+      if (input.action === "set") {
+        if (!input.time) return "Please provide a delivery time (e.g. '07:00').";
+        const existingTz = await getConfig(db, "timezone");
+        const tz = input.timezone || existingTz;
+        if (!tz) return "Please provide a timezone (e.g. 'Asia/Singapore') — none is stored yet.";
+        await upsertSetting(db, "briefing_time", input.time);
+        if (input.timezone) await upsertSetting(db, "timezone", input.timezone);
+        return `Briefing schedule set: ${input.time} (${tz})`;
+      }
+      return "Unknown action. Use 'get' or 'set'.";
+    }
 
     default:
       return "Unknown tool.";
