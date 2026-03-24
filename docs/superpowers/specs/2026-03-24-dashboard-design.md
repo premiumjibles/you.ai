@@ -6,7 +6,7 @@ A web dashboard for You.ai that gives users a visual command center for their pe
 
 **Key decisions:**
 - Single-user, single-instance deployment (no multi-tenancy)
-- Auth via bot-issued magic links (Telegram/WhatsApp) — verifies the requester is the owner
+- No authentication — dashboard served on localhost, access controlled by being on the machine
 - React SPA served as static files from the existing Express server (single deployment)
 - Dark and minimal aesthetic (Linear/Vercel style)
 - Icon sidebar navigation
@@ -14,53 +14,7 @@ A web dashboard for You.ai that gives users a visual command center for their pe
 
 ---
 
-## 1. Authentication
-
-### Flow
-
-1. User sends `/dashboard` (or "open dashboard") to the bot via Telegram/WhatsApp
-2. Bot generates a short-lived token, stores it in `dashboard_tokens` table
-3. Bot replies with a link: `https://<host>/auth?token=<token>`
-4. Express validates the token, creates a JWT session cookie, redirects to `/dashboard`
-5. Subsequent API calls include the JWT — middleware verifies the session is valid
-
-### Token Security
-
-- 32 bytes, cryptographically random (`crypto.randomBytes`), base64url encoded
-- Single-use: marked `used=true` on first consumption, reuse rejected
-- 5-minute expiry, enforced server-side
-- Rate limited: max 5 token generations per hour
-
-### JWT Session
-
-- Issued as `httpOnly`, `Secure`, `SameSite=Strict` cookie
-- 24-hour expiry — user requests a fresh link to re-auth
-- Contains `exp` claim (no user_id needed — single user)
-- Signed with a server-side secret (`DASHBOARD_JWT_SECRET` env var)
-
-### New DB Table: `dashboard_tokens`
-
-```sql
-CREATE TABLE dashboard_tokens (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  token TEXT UNIQUE NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  used BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX idx_dashboard_tokens_token ON dashboard_tokens(token);
-```
-
-### Bot Command
-
-Add a `/dashboard` command handler to both messaging providers (Telegram and WhatsApp). Only responds to the configured owner (validated by `TELEGRAM_OWNER_ID` or `WHATSAPP_OWNER_JID`). When received:
-1. Check rate limit (5/hour)
-2. Generate token, insert into `dashboard_tokens` with `expires_at = NOW() + 5 minutes`
-3. Reply with the URL
-
----
-
-## 2. Navigation & Layout
+## 1. Navigation & Layout
 
 ### Icon Sidebar
 
@@ -74,7 +28,7 @@ A narrow (~56px) icon rail on the left side of the screen. Each icon has a toolt
 | Upload | Import | Always visible |
 | Gear | Settings | Always visible |
 
-Bottom of sidebar: user initial/avatar circle + logout action.
+Bottom of sidebar: settings gear icon.
 
 Active page indicated by a highlighted icon background (indigo tint).
 
@@ -84,7 +38,7 @@ On narrow viewports (<768px), the sidebar collapses to a bottom tab bar with the
 
 ---
 
-## 3. Briefings Page (Home / Default)
+## 2. Briefings Page (Home / Default)
 
 ### Layout (top to bottom)
 
@@ -111,7 +65,7 @@ On narrow viewports (<768px), the sidebar collapses to a bottom tab bar with the
 
 ---
 
-## 4. GitHub Page
+## 3. GitHub Page
 
 Only rendered in the sidebar navigation if the user has at least one active `github_activity` sub-agent.
 
@@ -152,7 +106,7 @@ CREATE TABLE github_summaries (
 
 ---
 
-## 5. Outreach Page
+## 4. Outreach Page
 
 ### Layout
 
@@ -200,7 +154,7 @@ The existing `POST /api/outreach/draft` endpoint should be updated to also persi
 
 ---
 
-## 6. Import Page
+## 5. Import Page
 
 ### Layout
 
@@ -238,7 +192,7 @@ Existing import endpoints (`POST /api/import/csv`, `/mbox`, `/ics`) should be up
 
 ---
 
-## 7. Settings Page
+## 6. Settings Page
 
 Form-based UI organized into collapsible sections, each with its own save button.
 
@@ -313,21 +267,7 @@ PATCH /api/settings          — Update one or more settings
 
 ---
 
-## 8. Auth Middleware
-
-A new Express middleware applied to dashboard-facing `/api/*` routes:
-
-1. Extract JWT from the `httpOnly` cookie
-2. Verify signature and expiry
-3. Return 401 if invalid or missing
-
-Since this is a single-user instance, the middleware simply validates that a valid session exists — no user_id extraction or data scoping needed. The existing hardcoded `'sean'` user_id in route handlers remains unchanged.
-
-The middleware is only applied to routes called by the dashboard. Internal calls from the bot/scheduler (e.g. `generateBriefing(db)`) bypass HTTP entirely and are unaffected.
-
----
-
-## 9. Frontend Architecture
+## 7. Frontend Architecture
 
 ### Tech Stack
 
@@ -348,8 +288,8 @@ dashboard/
 ├── package.json
 ├── src/
 │   ├── main.tsx              # Entry point
-│   ├── App.tsx               # Router + layout shell + auth guard
-│   ├── api.ts                # Fetch wrapper (handles 401 → redirect to re-auth)
+│   ├── App.tsx               # Router + layout shell
+│   ├── api.ts                # Fetch wrapper for API calls
 │   ├── components/
 │   │   ├── Sidebar.tsx       # Icon rail + tooltips + active state
 │   │   ├── HeroCard.tsx      # Consolidated briefing display
@@ -367,7 +307,6 @@ dashboard/
 │   │   ├── Import.tsx
 │   │   └── Settings.tsx
 │   └── hooks/
-│       ├── useAuth.ts        # Auth state, logout, 401 handling
 │       └── useApi.ts         # Data fetching with loading/error states
 ```
 
@@ -386,18 +325,17 @@ dashboard/
 
 ---
 
-## 10. New Environment Variables
+## 8. New Environment Variables
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `DASHBOARD_JWT_SECRET` | Signing key for JWT session tokens | Yes (auto-generated by setup.sh) |
 | `SETTINGS_ENCRYPTION_KEY` | Encryption key for sensitive settings at rest | Yes (auto-generated by setup.sh) |
 
-Both should be added to `setup.sh` auto-generation and `.env.example`.
+Should be added to `setup.sh` auto-generation and `.env.example`.
 
 ---
 
-## 11. Visual Design Tokens
+## 9. Visual Design Tokens
 
 Consistent with the dark minimal aesthetic:
 
