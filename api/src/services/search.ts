@@ -21,6 +21,7 @@ export interface ContactResult {
   phone: string | null;
   linkedin_url: string | null;
   notes: string | null;
+  source_databases: string[] | null;
   priority_ring: number;
   last_interaction_date: Date | null;
   score: number;
@@ -77,6 +78,14 @@ async function semanticSearch(
   return rows;
 }
 
+function applySourceBoost(results: ContactResult[]): ContactResult[] {
+  for (const r of results) {
+    const sourceCount = r.source_databases?.length ?? 1;
+    r.score += 0.05 * (sourceCount - 1);
+  }
+  return results.sort((a, b) => b.score - a.score);
+}
+
 function dedupeByContact(results: ContactResult[]): ContactResult[] {
   const seen = new Map<string, ContactResult>();
   for (const r of results) {
@@ -85,7 +94,7 @@ function dedupeByContact(results: ContactResult[]): ContactResult[] {
       seen.set(r.id, r);
     }
   }
-  return Array.from(seen.values()).sort((a, b) => b.score - a.score);
+  return Array.from(seen.values());
 }
 
 export async function searchContacts(
@@ -96,16 +105,16 @@ export async function searchContacts(
   const threshold = params.threshold || 0.3;
 
   if (params.strategy === "fuzzy_name") {
-    return fuzzyNameSearch(db, params.query, limit, threshold);
+    return applySourceBoost(await fuzzyNameSearch(db, params.query, limit, threshold));
   }
 
   if (params.strategy === "keyword") {
-    return keywordSearch(db, params.query, limit);
+    return applySourceBoost(await keywordSearch(db, params.query, limit));
   }
 
   if (params.strategy === "semantic") {
     if (!params.embedding) throw new Error("Semantic search requires an embedding");
-    return semanticSearch(db, params.embedding, limit, threshold);
+    return applySourceBoost(await semanticSearch(db, params.embedding, limit, threshold));
   }
 
   // Combined: run requested strategies in parallel, merge
@@ -123,5 +132,5 @@ export async function searchContacts(
   }
 
   const allResults = (await Promise.all(promises)).flat();
-  return dedupeByContact(allResults).slice(0, limit);
+  return applySourceBoost(dedupeByContact(allResults)).slice(0, limit);
 }
