@@ -245,6 +245,10 @@ validate_github_token() {
   [[ "$1" == ghp_* ]] || [[ "$1" == github_pat_* ]]
 }
 
+validate_venice_key() {
+  [ -n "$1" ]
+}
+
 validate_email() {
   [[ "$1" == *@* ]]
 }
@@ -292,22 +296,42 @@ show_welcome() {
   echo ""
   echo "This wizard will configure your personal AI assistant."
   echo "It takes about 2 minutes. You'll need:"
-  echo "  • An Anthropic API key"
+  echo "  • An API key for your AI provider (Anthropic or Venice)"
   echo "  • A Telegram or WhatsApp account"
   echo ""
 }
 
-collect_anthropic_key() {
+collect_llm_provider() {
   echo ""
-  ui_info "Step 1: Anthropic API Key"
-  echo "  Get your key from: https://console.anthropic.com → API Keys"
+  ui_info "Step 1: AI Provider"
+  echo "  Choose which AI provider powers your assistant."
   echo ""
-  ANTHROPIC_KEY=$(prompt_validated "Paste your Anthropic API key" "password" "validate_anthropic_key")
+  LLM_PROVIDER_CHOICE=$(ui_choose "Anthropic (default)" "Venice")
+
+  case "$LLM_PROVIDER_CHOICE" in
+    "Anthropic"*) LLM_PROVIDER_CHOICE="anthropic" ;;
+    "Venice"*)    LLM_PROVIDER_CHOICE="venice" ;;
+  esac
+}
+
+collect_api_key() {
+  echo ""
+  if [ "$LLM_PROVIDER_CHOICE" = "venice" ]; then
+    ui_info "Step 2: Venice API Key"
+    echo "  Get your key from: https://venice.ai → Settings → API"
+    echo ""
+    PROVIDER_API_KEY=$(prompt_validated "Paste your Venice API key" "password" "validate_venice_key")
+  else
+    ui_info "Step 2: Anthropic API Key"
+    echo "  Get your key from: https://console.anthropic.com → API Keys"
+    echo ""
+    PROVIDER_API_KEY=$(prompt_validated "Paste your Anthropic API key" "password" "validate_anthropic_key")
+  fi
 }
 
 collect_messaging_provider() {
   echo ""
-  ui_info "Step 2: Messaging Provider"
+  ui_info "Step 3: Messaging Provider"
   echo "  Choose how you'll chat with your AI assistant."
   echo ""
   MESSAGING_PROVIDER=$(ui_choose "Telegram (recommended)" "WhatsApp")
@@ -320,7 +344,7 @@ collect_messaging_provider() {
 
 collect_telegram() {
   echo ""
-  ui_info "Step 3: Telegram Bot Setup"
+  ui_info "Step 4: Telegram Bot Setup"
   echo ""
   echo "  To create a Telegram bot:"
   echo "  1. Open Telegram and search for @BotFather"
@@ -339,7 +363,7 @@ collect_telegram() {
 
 collect_whatsapp() {
   echo ""
-  ui_info "Step 3: WhatsApp Setup"
+  ui_info "Step 4: WhatsApp Setup"
   echo ""
   echo "  Enter your phone number in international format (no + or spaces)."
   echo "  Example: 61412345678 (Australia), 14155551234 (US)"
@@ -356,7 +380,8 @@ collect_whatsapp() {
 show_summary() {
   echo ""
   ui_info "Configuration Summary"
-  echo "  Anthropic API Key: ****${ANTHROPIC_KEY: -4}"
+  echo "  AI Provider: $LLM_PROVIDER_CHOICE"
+  echo "  API Key: ****${PROVIDER_API_KEY: -4}"
   echo "  Messaging: $MESSAGING_PROVIDER"
   if [ "$MESSAGING_PROVIDER" = "telegram" ]; then
     echo "  Bot Token: ****${TELEGRAM_TOKEN: -4}"
@@ -380,8 +405,13 @@ write_env() {
   env_uncomment_keys "$ENV_TMP"
 
   # Core config
-  env_set "$ENV_TMP" "ANTHROPIC_API_KEY" "$ANTHROPIC_KEY"
   env_set "$ENV_TMP" "MESSAGING_PROVIDER" "$MESSAGING_PROVIDER"
+  env_set "$ENV_TMP" "LLM_PROVIDER" "$LLM_PROVIDER_CHOICE"
+  if [ "$LLM_PROVIDER_CHOICE" = "venice" ]; then
+    env_set "$ENV_TMP" "VENICE_API_KEY" "$PROVIDER_API_KEY"
+  else
+    env_set "$ENV_TMP" "ANTHROPIC_API_KEY" "$PROVIDER_API_KEY"
+  fi
 
   # Secrets
   env_set "$ENV_TMP" "POSTGRES_PASSWORD" "$pg_pass"
@@ -534,7 +564,8 @@ show_whats_next() {
 # Collect config and write .env — no service launch. Used by both fresh_install and rerun_setup.
 collect_and_write_config() {
   show_welcome
-  collect_anthropic_key
+  collect_llm_provider
+  collect_api_key
   collect_messaging_provider
 
   if [ "$MESSAGING_PROVIDER" = "telegram" ]; then
@@ -575,6 +606,38 @@ advanced_config() {
   echo ""
   ui_header "Optional Integrations"
   echo "  Press Enter to skip any integration you don't need."
+  echo ""
+
+  # LLM Provider
+  ui_info "LLM Provider"
+  local current_provider
+  current_provider=$(env_get "$ENV_FILE" "LLM_PROVIDER")
+  current_provider="${current_provider:-anthropic}"
+  echo "  Current provider: $current_provider"
+  echo ""
+  local new_provider
+  new_provider=$(ui_choose "Keep current ($current_provider)" "Anthropic" "Venice")
+  case "$new_provider" in
+    "Anthropic"*)
+      env_set "$ENV_FILE" "LLM_PROVIDER" "anthropic"
+      if [ -z "$(env_get "$ENV_FILE" "ANTHROPIC_API_KEY")" ] || [ "$(env_get "$ENV_FILE" "ANTHROPIC_API_KEY")" = "sk-ant-xxx" ]; then
+        local anthropic_key
+        anthropic_key=$(prompt_validated "Anthropic API key" "password" "validate_anthropic_key")
+        env_set "$ENV_FILE" "ANTHROPIC_API_KEY" "$anthropic_key"
+      fi
+      ui_success "LLM provider set to Anthropic"
+      ;;
+    "Venice"*)
+      env_set "$ENV_FILE" "LLM_PROVIDER" "venice"
+      if [ -z "$(env_get "$ENV_FILE" "VENICE_API_KEY")" ]; then
+        local venice_key
+        venice_key=$(prompt_validated "Venice API key" "password" "validate_venice_key")
+        env_set "$ENV_FILE" "VENICE_API_KEY" "$venice_key"
+      fi
+      ui_success "LLM provider set to Venice"
+      ;;
+    *) ;; # Keep current
+  esac
   echo ""
 
   # OpenAI
@@ -714,12 +777,13 @@ rerun_setup() {
   fi
 
   # Save advanced config values from existing .env
-  local saved_openai saved_github saved_av saved_email saved_cron
+  local saved_openai saved_github saved_av saved_email saved_cron saved_venice_key
   saved_openai=$(env_get "$ENV_FILE" "OPENAI_API_KEY")
   saved_github=$(env_get "$ENV_FILE" "GITHUB_TOKEN")
   saved_av=$(env_get "$ENV_FILE" "ALPHA_VANTAGE_API_KEY")
   saved_email=$(env_get "$ENV_FILE" "OWNER_EMAIL")
   saved_cron=$(env_get "$ENV_FILE" "BRIEFING_CRON")
+  saved_venice_key=$(env_get "$ENV_FILE" "VENICE_API_KEY")
 
   # Remove existing .env so collect_and_write_config treats it as new
   rm -f "$ENV_FILE"
@@ -733,6 +797,7 @@ rerun_setup() {
   [ -n "$saved_av" ] && env_set "$ENV_FILE" "ALPHA_VANTAGE_API_KEY" "$saved_av"
   [ -n "$saved_email" ] && env_set "$ENV_FILE" "OWNER_EMAIL" "$saved_email"
   [ -n "$saved_cron" ] && env_set "$ENV_FILE" "BRIEFING_CRON" "$saved_cron"
+  [ -n "$saved_venice_key" ] && env_set "$ENV_FILE" "VENICE_API_KEY" "$saved_venice_key"
 
   # Now start services with full config applied
   if ! start_services; then

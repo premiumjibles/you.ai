@@ -5,7 +5,7 @@ Step-by-step deployment guide based on real deployment experience. Covers a fres
 ## Prerequisites
 
 Before you start, have these ready:
-- **Anthropic API key** — you'll get this during setup (from [console.anthropic.com](https://console.anthropic.com))
+- **An API key** for your AI provider — you'll choose between Anthropic and Venice during setup
 - A VPS with SSH access (tested on Hetzner, Debian/Ubuntu)
 
 ## Step 1: Install Docker
