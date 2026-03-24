@@ -58,8 +58,6 @@ export async function heartbeat(
 }
 
 export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
-  const briefingCron = process.env.BRIEFING_CRON || "0 7 * * *";
-  const alertCron = process.env.ALERT_CRON || "*/15 * * * *";
   const ownerAddress = provider.getOwnerAddress();
 
   if (!ownerAddress) {
@@ -67,21 +65,12 @@ export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
     return;
   }
 
-  // Morning briefing
-  cron.schedule(briefingCron, () => {
-    runMorningBriefing(db, provider, ownerAddress).catch((err) =>
-      console.error("Morning briefing failed:", err)
+  cron.schedule("*/5 * * * *", () => {
+    heartbeat(db, provider, ownerAddress).catch((err) =>
+      console.error("Heartbeat failed:", err)
     );
   });
-  console.log(`Scheduler: morning briefing cron set to "${briefingCron}"`);
-
-  // Urgent alerts
-  cron.schedule(alertCron, () => {
-    runUrgentAlerts(db, provider, ownerAddress).catch((err) =>
-      console.error("Urgent alerts check failed:", err)
-    );
-  });
-  console.log(`Scheduler: urgent alerts cron set to "${alertCron}"`);
+  console.log("Scheduler: heartbeat running every 5 minutes");
 }
 
 export async function generateBriefing(db: pg.Pool): Promise<string> {
