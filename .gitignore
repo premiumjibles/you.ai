@@ -7,3 +7,6 @@ n8n-data/
 .gum/
 docs/superpowers/plans/
 .claude/
+dashboard/node_modules/
+dashboard/dist/
+.superpowers/
