@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { Markdown } from "./Markdown";
 
 const CATEGORY_COLORS: Record<string, string> = {
   market_tracker: "#6366f1", financial_tracker: "#6366f1", github_activity: "#f59e0b",
@@ -29,7 +30,7 @@ export function SourceCard({ name, output, type }: SourceCardProps) {
         {expanded ? <ChevronUp size={16} className="text-[#666] shrink-0 mt-1" /> : <ChevronDown size={16} className="text-[#666] shrink-0 mt-1" />}
       </div>
       {expanded && (
-        <div className="mt-3 pt-3 border-t border-[#1e1e2e] text-sm text-[#e2e8f0] whitespace-pre-wrap leading-relaxed">{output}</div>
+        <div className="mt-3 pt-3 border-t border-[#1e1e2e] text-sm text-[#e2e8f0] leading-relaxed"><Markdown>{output}</Markdown></div>
       )}
     </button>
   );

@@ -1,5 +1,6 @@
 import { apiFetch } from "../api";
 import { useState } from "react";
+import { Markdown } from "./Markdown";
 
 interface HeroCardProps {
   content: string | null;
@@ -46,7 +47,7 @@ export function HeroCard({ content, isToday, loading, onGenerated }: HeroCardPro
   return (
     <div className="rounded-xl bg-gradient-to-br from-[#111118] to-[#161625] border border-[#2a2a3e] p-6 mb-6">
       <div className="text-xs text-indigo-400 uppercase tracking-wider mb-3 font-medium">AI Summary</div>
-      <div className="text-[#e2e8f0] leading-relaxed whitespace-pre-wrap">{content}</div>
+      <div className="text-[#e2e8f0] leading-relaxed"><Markdown>{content}</Markdown></div>
     </div>
   );
 }
