@@ -348,9 +348,21 @@ show_welcome() {
   echo ""
 }
 
+collect_user_id() {
+  echo ""
+  ui_info "Step 1: Your Username"
+  echo "  A short slug to identify this instance (e.g., your first name)."
+  echo "  This scopes your data so it's portable. Lowercase, no spaces."
+  echo ""
+  local user_id
+  user_id=$(ui_input "Username (e.g., sean, dorjee)")
+  user_id=$(echo "${user_id:-default}" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+  USER_SLUG="$user_id"
+}
+
 collect_anthropic_key() {
   echo ""
-  ui_info "Step 1: Anthropic API Key"
+  ui_info "Step 2: Anthropic API Key"
   echo "  Get your key from: https://console.anthropic.com → API Keys"
   echo ""
   prompt_validated "Paste your Anthropic API key" "password" "validate_anthropic_key"
@@ -359,7 +371,7 @@ collect_anthropic_key() {
 
 collect_messaging_provider() {
   echo ""
-  ui_info "Step 2: Messaging Provider"
+  ui_info "Step 3: Messaging Provider"
   echo "  Choose how you'll chat with your AI assistant."
   echo ""
   MESSAGING_PROVIDER=$(ui_choose "Telegram (recommended)" "WhatsApp")
@@ -372,7 +384,7 @@ collect_messaging_provider() {
 
 collect_telegram() {
   echo ""
-  ui_info "Step 3: Telegram Bot Setup"
+  ui_info "Step 4: Telegram Bot Setup"
   echo ""
   echo "  To create a Telegram bot:"
   echo "  1. Open Telegram and search for @BotFather"
@@ -393,7 +405,7 @@ collect_telegram() {
 
 collect_whatsapp() {
   echo ""
-  ui_info "Step 3: WhatsApp Setup"
+  ui_info "Step 4: WhatsApp Setup"
   echo ""
   echo "  Enter your phone number in international format (no + or spaces)."
   echo "  Example: 61412345678 (Australia), 14155551234 (US)"
@@ -411,6 +423,7 @@ collect_whatsapp() {
 show_summary() {
   echo ""
   ui_info "Configuration Summary"
+  echo "  Username: $USER_SLUG"
   echo "  Anthropic API Key: ****${ANTHROPIC_KEY: -4}"
   echo "  Messaging: $MESSAGING_PROVIDER"
   if [ "$MESSAGING_PROVIDER" = "telegram" ]; then
@@ -442,6 +455,7 @@ write_env() {
   env_set "$ENV_TMP" "ALPHA_VANTAGE_API_KEY" ""
 
   # Core config
+  env_set "$ENV_TMP" "USER_ID" "$USER_SLUG"
   env_set "$ENV_TMP" "ANTHROPIC_API_KEY" "$ANTHROPIC_KEY"
   env_set "$ENV_TMP" "MESSAGING_PROVIDER" "$MESSAGING_PROVIDER"
 
@@ -597,6 +611,7 @@ show_whats_next() {
 # Collect config and write .env — no service launch. Used by both fresh_install and rerun_setup.
 collect_and_write_config() {
   show_welcome
+  collect_user_id
   collect_anthropic_key
   collect_messaging_provider
 

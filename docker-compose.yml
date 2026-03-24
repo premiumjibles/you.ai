@@ -22,6 +22,7 @@ services:
       context: .
       dockerfile: api/Dockerfile
     environment:
+      USER_ID: ${USER_ID:-default}
       DATABASE_URL: ${DATABASE_URL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}

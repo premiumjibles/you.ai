@@ -2,6 +2,8 @@ import type pg from "pg";
 import { findDuplicate, mergeContacts } from "./dedup.js";
 import { scrub } from "./scrubber.js";
 
+type Queryable = pg.Pool | pg.PoolClient;
+
 interface ContactInput {
   name: string;
   email?: string | null;
@@ -20,7 +22,7 @@ interface UpsertResult {
 }
 
 export async function upsertContact(
-  db: pg.Pool,
+  db: Queryable,
   input: ContactInput
 ): Promise<UpsertResult> {
   // Scrub PII from notes

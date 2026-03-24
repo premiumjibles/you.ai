@@ -226,14 +226,15 @@ export async function executeTool(db: pg.Pool, name: string, input: any): Promis
     case "sub_agent_management": {
       if (input.action === "list") {
         const { rows } = await db.query(
-          "SELECT id, name, type, config, schedule, active FROM sub_agents WHERE user_id = 'sean' AND active = true ORDER BY name"
+          "SELECT id, name, type, config, schedule, active FROM sub_agents WHERE user_id = $1 AND active = true ORDER BY name",
+          [process.env.USER_ID || "default"]
         );
         return rows.length === 0 ? "No active briefing topics." : JSON.stringify(rows);
       }
       if (input.action === "create") {
         const { rows } = await db.query(
-          `INSERT INTO sub_agents (user_id, type, name, config) VALUES ('sean', $1, $2, $3) RETURNING id, name, type`,
-          [input.type || "custom", input.name, JSON.stringify(input.config || {})]
+          `INSERT INTO sub_agents (user_id, type, name, config) VALUES ($1, $2, $3, $4) RETURNING id, name, type`,
+          [process.env.USER_ID || "default", input.type || "custom", input.name, JSON.stringify(input.config || {})]
         );
         return `Created topic: ${rows[0].name} (${rows[0].type})`;
       }
@@ -246,8 +247,8 @@ export async function executeTool(db: pg.Pool, name: string, input: any): Promis
 
     case "briefing_history": {
       const { rows } = await db.query(
-        "SELECT date::text, content FROM briefings WHERE user_id = 'sean' ORDER BY date DESC LIMIT $1",
-        [input.limit || 5]
+        "SELECT date::text, content FROM briefings WHERE user_id = $1 ORDER BY date DESC LIMIT $2",
+        [process.env.USER_ID || "default", input.limit || 5]
       );
       if (rows.length === 0) return "No briefings yet.";
       return JSON.stringify(rows);

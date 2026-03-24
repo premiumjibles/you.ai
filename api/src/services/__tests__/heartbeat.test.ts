@@ -134,7 +134,8 @@ describe("heartbeat", () => {
 
     // runUrgentAlerts queries sub_agents
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("sub_agents")
+      expect.stringContaining("sub_agents"),
+      expect.any(Array)
     );
   });
 
@@ -201,7 +202,8 @@ describe("heartbeat", () => {
 
     // runUrgentAlerts always queries sub_agents
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("sub_agents")
+      expect.stringContaining("sub_agents"),
+      expect.any(Array)
     );
 
     vi.useRealTimers();

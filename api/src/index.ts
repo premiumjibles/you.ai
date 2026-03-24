@@ -45,7 +45,7 @@ const port = parseInt(process.env.API_PORT || "3000");
 runMigrations(pool).catch((err) => {
   console.error("Migration warning:", err.message);
 });
-app.listen(port, process.env.API_HOST || "0.0.0.0", () => {
+const server = app.listen(port, process.env.API_HOST || "0.0.0.0", () => {
   console.log(`API server listening on port ${port}`);
   console.log(`Messaging provider: ${provider.name}`);
 
@@ -76,5 +76,6 @@ app.listen(port, process.env.API_HOST || "0.0.0.0", () => {
     console.error("Scheduler will not start. Fix the configuration and restart.");
   });
 });
+server.setTimeout(30 * 60 * 1000);
 
 export default app;

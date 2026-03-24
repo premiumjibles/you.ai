@@ -43,10 +43,11 @@ export async function heartbeat(
     const now = new Date();
     const currentTime = getUserLocalTime(now, timezone);
     if (isWithinBriefingWindow(briefingTime, currentTime)) {
+      const userId = process.env.USER_ID || "default";
       const localDate = now.toLocaleDateString("en-CA", { timeZone: timezone });
       const { rows } = await db.query(
-        "SELECT COUNT(*) FROM briefings WHERE user_id = 'sean' AND date = $1",
-        [localDate]
+        "SELECT COUNT(*) FROM briefings WHERE user_id = $1 AND date = $2",
+        [userId, localDate]
       );
       if (parseInt(rows[0].count) === 0) {
         await runMorningBriefing(db, provider, ownerAddress);
@@ -74,8 +75,9 @@ export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
 }
 
 export async function generateBriefing(db: pg.Pool): Promise<string> {
+  const userId = process.env.USER_ID || "default";
   const { rows: agents } = await db.query(
-    "SELECT * FROM sub_agents WHERE user_id = 'sean' AND active = true"
+    "SELECT * FROM sub_agents WHERE user_id = $1 AND active = true", [userId]
   );
 
   if (agents.length === 0) {
@@ -97,15 +99,15 @@ export async function generateBriefing(db: pg.Pool): Promise<string> {
   }
 
   const { rows: history } = await db.query(
-    "SELECT date::text, content FROM briefings WHERE user_id = 'sean' ORDER BY date DESC LIMIT $1",
-    [parseInt(process.env.BRIEFING_HISTORY_COUNT || "5")]
+    "SELECT date::text, content FROM briefings WHERE user_id = $1 ORDER BY date DESC LIMIT $2",
+    [userId, parseInt(process.env.BRIEFING_HISTORY_COUNT || "5")]
   );
 
   const content = await consolidateBriefing(outputs, history);
 
   await db.query(
-    "INSERT INTO briefings (user_id, content, sub_agent_outputs) VALUES ('sean', $1, $2)",
-    [content, JSON.stringify(outputs)]
+    "INSERT INTO briefings (user_id, content, sub_agent_outputs) VALUES ($1, $2, $3)",
+    [userId, content, JSON.stringify(outputs)]
   );
 
   return content;
@@ -184,8 +186,9 @@ async function runUrgentAlerts(
   provider: MessagingProvider,
   ownerAddress: string
 ): Promise<void> {
+  const userId = process.env.USER_ID || "default";
   const { rows: agents } = await db.query(
-    "SELECT * FROM sub_agents WHERE user_id = 'sean' AND active = true"
+    "SELECT * FROM sub_agents WHERE user_id = $1 AND active = true", [userId]
   );
 
   for (const agent of agents) {

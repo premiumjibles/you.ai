@@ -6,7 +6,7 @@ export function subAgentsRouter(db: DB): Router {
 
   router.get("/", async (req, res) => {
     try {
-      const userId = (req.query.user_id as string) || "sean";
+      const userId = (req.query.user_id as string) || process.env.USER_ID || "default";
       const { rows } = await db.query(
         "SELECT * FROM sub_agents WHERE user_id = $1 AND active = true ORDER BY name",
         [userId]
@@ -19,7 +19,7 @@ export function subAgentsRouter(db: DB): Router {
 
   router.post("/", async (req, res) => {
     try {
-      const { user_id = "sean", type, name, config = {}, workflow_id, schedule } = req.body;
+      const { user_id = process.env.USER_ID || "default", type, name, config = {}, workflow_id, schedule } = req.body;
       const { rows } = await db.query(
         `INSERT INTO sub_agents (user_id, type, name, config, workflow_id, schedule)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
