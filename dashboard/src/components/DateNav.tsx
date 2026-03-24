@@ -23,7 +23,7 @@ function isToday(dateStr: string): boolean {
 export function DateNav({ date, onDateChange }: DateNavProps) {
   return (
     <div className="flex items-center gap-3 mb-6">
-      <h1 className="text-xl font-semibold">
+      <h1 className="text-xl font-semibold text-balance">
         {isToday(date) ? "Today's Briefing" : "Briefing"}
       </h1>
       <div className="flex items-center gap-1 ml-auto">

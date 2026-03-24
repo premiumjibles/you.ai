@@ -17,7 +17,7 @@ function RepoCardWithData({ repo }: { repo: string }) {
 
   if (loading) {
     return (
-      <div className="rounded-lg bg-[#111118] border border-[#1e1e2e] p-5 animate-pulse">
+      <div className="rounded-lg bg-[#111118] card-shadow p-5 animate-pulse">
         <div className="h-5 bg-[#1e1e2e] rounded w-1/3 mb-4" />
         <div className="h-4 bg-[#1e1e2e] rounded w-2/3 mb-2" />
         <div className="h-4 bg-[#1e1e2e] rounded w-1/2" />
@@ -42,11 +42,15 @@ export default function GitHub() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold">GitHub Activity</h1>
+        <h1 className="text-xl font-semibold text-balance">GitHub Activity</h1>
         <span className="text-xs text-[#666]">Last 24 hours</span>
       </div>
       <div className="space-y-4">
-        {repos.map((repo) => (<RepoCardWithData key={repo} repo={repo} />))}
+        {repos.map((repo, i) => (
+          <div key={repo} className="animate-fade-in-up" style={{ '--stagger': i } as React.CSSProperties}>
+            <RepoCardWithData repo={repo} />
+          </div>
+        ))}
       </div>
       {repos.length === 0 && (
         <div className="text-center text-[#666] mt-12">

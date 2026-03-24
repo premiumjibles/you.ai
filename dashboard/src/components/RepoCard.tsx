@@ -27,7 +27,7 @@ export function RepoCard({ repo, commits, prs }: RepoCardProps) {
   };
 
   return (
-    <div className="rounded-lg bg-[#111118] border border-[#1e1e2e] p-5">
+    <div className="rounded-lg bg-[#111118] card-shadow p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-medium text-[#e2e8f0]">{repo}</h3>
         <a href={`https://github.com/${repo}`} target="_blank" rel="noopener noreferrer" className="text-[#666] hover:text-[#999] transition-colors">

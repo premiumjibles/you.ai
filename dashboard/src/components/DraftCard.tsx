@@ -35,7 +35,7 @@ export function DraftCard({ draft, onUpdate }: DraftCardProps) {
   };
 
   return (
-    <div className="rounded-lg bg-[#111118] border border-[#1e1e2e] overflow-hidden">
+    <div className="rounded-lg bg-[#111118] card-shadow overflow-hidden">
       <button onClick={() => setExpanded(!expanded)} className="w-full text-left p-4 hover:bg-[#161620] transition-colors">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
