@@ -9,6 +9,17 @@ export function briefingsRouter(db: DB): Router {
   router.get("/history", async (req, res) => {
     try {
       const userId = (req.query.user_id as string) || "sean";
+      const date = req.query.date as string | undefined;
+
+      if (date) {
+        const { rows } = await db.query(
+          "SELECT id, date, content, sub_agent_outputs, created_at FROM briefings WHERE user_id = $1 AND date = $2",
+          [userId, date]
+        );
+        if (rows.length === 0) return res.status(404).json({ error: "No briefing for this date" });
+        return res.json({ briefings: rows });
+      }
+
       const limit = parseInt((req.query.limit as string) || "5");
       const { rows } = await db.query(
         "SELECT id, date, content, sub_agent_outputs, created_at FROM briefings WHERE user_id = $1 ORDER BY date DESC LIMIT $2",
