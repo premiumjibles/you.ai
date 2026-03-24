@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { ExternalLink, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ExternalLink, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { apiFetch } from "../api";
+import { Markdown } from "./Markdown";
 
 interface RepoCardProps {
   repo: string;
@@ -13,18 +14,16 @@ export function RepoCard({ repo, commits, prs }: RepoCardProps) {
   const [summary, setSummary] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
 
-  const handleSummarize = async () => {
+  useEffect(() => {
+    if (commits.length === 0 && prs.length === 0) return;
     setSummarizing(true);
-    try {
-      const res = await apiFetch<{ summary: string }>("/api/github/summary", {
-        method: "POST",
-        body: JSON.stringify({ repo, commits, prs }),
-      });
-      setSummary(res.summary);
-    } finally {
-      setSummarizing(false);
-    }
-  };
+    apiFetch<{ summary: string }>("/api/github/summary", {
+      method: "POST",
+      body: JSON.stringify({ repo, commits, prs }),
+    })
+      .then((res) => setSummary(res.summary))
+      .finally(() => setSummarizing(false));
+  }, [repo, commits, prs]);
 
   return (
     <div className="rounded-lg bg-[#111118] card-shadow p-5">
@@ -33,6 +32,19 @@ export function RepoCard({ repo, commits, prs }: RepoCardProps) {
         <a href={`https://github.com/${repo}`} target="_blank" rel="noopener noreferrer" className="text-[#666] hover:text-[#999] transition-colors">
           <ExternalLink size={16} />
         </a>
+      </div>
+
+      <div className="mb-4 pb-3 border-b border-[#1e1e2e]">
+        {summarizing ? (
+          <div className="flex items-center gap-2 text-xs text-[#666]">
+            <Loader2 size={14} className="animate-spin" />
+            Summarizing...
+          </div>
+        ) : summary ? (
+          <div className="text-sm text-[#999] leading-relaxed">
+            <Markdown>{summary}</Markdown>
+          </div>
+        ) : null}
       </div>
 
       {prs.length > 0 && (
@@ -70,16 +82,6 @@ export function RepoCard({ repo, commits, prs }: RepoCardProps) {
         </div>
       )}
 
-      <div className="mt-4 pt-3 border-t border-[#1e1e2e]">
-        {summary ? (
-          <p className="text-sm text-[#999] leading-relaxed">{summary}</p>
-        ) : (
-          <button onClick={handleSummarize} disabled={summarizing} className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50">
-            <Sparkles size={14} />
-            {summarizing ? "Summarizing..." : "Summarize changes"}
-          </button>
-        )}
-      </div>
     </div>
   );
 }
