@@ -54,7 +54,7 @@ CREATE INDEX idx_dashboard_tokens_token ON dashboard_tokens(token);
 
 ### Bot Command
 
-Add a `/dashboard` command handler to the messaging layer. When received:
+Add a `/dashboard` command handler to both messaging providers (Telegram and WhatsApp). When received:
 1. Check rate limit (5/hour for the user)
 2. Generate token, insert into `dashboard_tokens` with `expires_at = NOW() + 5 minutes`
 3. Reply with the URL
@@ -107,8 +107,8 @@ On narrow viewports (<768px), the sidebar collapses to a bottom tab bar with the
 
 ### Data Sources
 
-- `GET /api/briefings/history` — briefing content and `sub_agent_outputs`
-- `POST /api/briefings/trigger` — on-demand generation
+- `GET /api/briefings/history` — briefing content and `sub_agent_outputs`. Add a `?date=YYYY-MM-DD` query parameter to fetch a specific day's briefing. When provided, return the single briefing matching that date for the authenticated user (or 404). When omitted, retain existing behavior (returns the N most recent).
+- `POST /api/briefings/trigger` — on-demand generation. Must accept the authenticated `user_id` and pass it through to `generateBriefing()` (currently hardcoded to `'sean'`).
 
 ---
 
@@ -136,7 +136,21 @@ Body: { repo: "owner/repo", commits: [...], prs: [...] }
 Response: { summary: "..." }
 ```
 
-Calls the `fast` model tier to generate a concise summary. Response cached in memory or a simple cache table for the day.
+Calls the `fast` model tier to generate a concise summary. Response cached in a `github_summaries` table — one summary per repo per day. Subsequent requests for the same repo on the same day return the cached result.
+
+### New DB Table: `github_summaries`
+
+```sql
+CREATE TABLE github_summaries (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  summary TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, repo, date)
+);
+```
 
 ---
 
@@ -293,6 +307,15 @@ CREATE TABLE user_settings (
 
 Settings are encrypted at rest using a server-side encryption key (`SETTINGS_ENCRYPTION_KEY` env var). API responses return masked values for sensitive keys (e.g. `sk-ant-****xyz`).
 
+### Settings Consumption at Runtime
+
+A `getConfig(db, userId, key)` helper function provides the runtime config lookup layer. For each config key, it checks `user_settings` first (per-user override), then falls back to the corresponding `process.env` value (system default). This allows:
+- Self-hosted single-user deployments to continue using `.env` files with no DB settings at all
+- Multi-tenant deployments where each user provides their own API keys via the dashboard
+- Services like `getProvider()`, `scheduler.ts`, and `embeddings.ts` to call `getConfig()` instead of reading `process.env` directly
+
+The settings page in the dashboard writes to `user_settings`. The `.env` values remain the system-wide defaults for any key a user hasn't overridden.
+
 ### New Endpoints
 
 ```
@@ -302,7 +325,29 @@ PATCH /api/settings          — Update one or more settings
 
 ---
 
-## 8. Auth Middleware
+## 8. Multi-Tenant Schema Migration
+
+The `contacts` and `interactions` tables currently have no `user_id` column. To support multi-tenant data isolation:
+
+**Add `user_id` to `contacts`:**
+```sql
+ALTER TABLE contacts ADD COLUMN user_id TEXT NOT NULL DEFAULT 'sean';
+CREATE INDEX idx_contacts_user ON contacts(user_id);
+```
+
+**Add `user_id` to `interactions`:**
+```sql
+ALTER TABLE interactions ADD COLUMN user_id TEXT NOT NULL DEFAULT 'sean';
+CREATE INDEX idx_interactions_user ON interactions(user_id);
+```
+
+The `DEFAULT 'sean'` preserves existing data. All queries against these tables must be updated to filter by `user_id`. This migration must happen before auth middleware is enabled — it is a prerequisite for the dashboard to enforce data isolation.
+
+Update `init.sql` to include these columns for fresh deployments. Provide a migration script (`postgres/migrations/001-add-user-id.sql`) for existing deployments.
+
+---
+
+## 9. Auth Middleware
 
 A new Express middleware applied to all `/api/*` routes (except `/auth`):
 
@@ -317,7 +362,7 @@ For backward compatibility during the transition, if no JWT is present and `NODE
 
 ---
 
-## 9. Frontend Architecture
+## 10. Frontend Architecture
 
 ### Tech Stack
 
@@ -376,7 +421,7 @@ dashboard/
 
 ---
 
-## 10. New Environment Variables
+## 11. New Environment Variables
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
@@ -387,7 +432,7 @@ Both should be added to `setup.sh` auto-generation and `.env.example`.
 
 ---
 
-## 11. Visual Design Tokens
+## 12. Visual Design Tokens
 
 Consistent with the dark minimal aesthetic:
 
