@@ -86,7 +86,7 @@ describe("AnthropicProvider type mapping", () => {
   describe("fromAnthropicResponse", () => {
     it("maps text blocks", () => {
       const response = {
-        content: [{ type: "text" as const, text: "Hello" }],
+        content: [{ type: "text" as const, text: "Hello", citations: null }],
         stop_reason: "end_turn" as const,
       };
       const result = fromAnthropicResponse(response);
