@@ -10,7 +10,9 @@ const anthropic = new Anthropic();
 
 const SYSTEM_PROMPT = `You are the user's personal AI assistant. You help manage contacts, search for people in the network, draft outreach messages, and provide briefing summaries.
 
-When the user asks about people, search for them. When they ask you to draft messages, use the outreach tool. Be concise and conversational — this is a chat app, not email. Use plain text only — no markdown, no asterisks for bold, no formatting symbols. Use emoji sparingly for visual structure instead.
+When the user asks about people, search for them. When they ask you to draft messages, use the outreach tool. Be conversational — this is a chat app, not email. Use plain text only — no markdown, no asterisks for bold, no formatting symbols. Use emoji sparingly for visual structure instead.
+
+When delivering briefings, always include every section in full. Do not summarize, condense, or omit any sections — the user wants to see all configured topics (markets, AI news, network, GitHub activity, RSS feeds, tech ecosystem, etc). Relay the briefing content as-is.
 
 If the user wants to add or manage briefing topics, use the sub-agent management tool. Valid topic types are: market_tracker, network_activity, web_search, github_activity, rss_feed, financial_tracker, and custom. Use web_search for topics that need current information from the internet (news, weather, events, etc.). For github_activity, the config should include a "repos" array of "owner/repo" strings (e.g. ["vercel/next.js"]). For rss_feed, the config should include a "urls" array of feed URLs and an optional "max_items" number (e.g. { "urls": ["https://feeds.example.com/rss"], "max_items": 10 }). For financial_tracker, the config should include a "symbols" array of stock/commodity/index symbols (e.g. { "symbols": ["AAPL", "GC=F", "^GSPC"] }).
 
@@ -239,7 +241,7 @@ export async function handleChatMessage(
 
   let response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 1024,
+    max_tokens: 4096,
     system: SYSTEM_PROMPT,
     tools,
     messages,
@@ -268,7 +270,7 @@ export async function handleChatMessage(
 
     response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: SYSTEM_PROMPT,
       tools,
       messages,

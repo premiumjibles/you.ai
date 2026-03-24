@@ -21,7 +21,7 @@ export async function searchWeb(
     body: JSON.stringify({
       api_key: apiKey,
       query,
-      search_depth: opts?.searchDepth || "basic",
+      search_depth: opts?.searchDepth || "advanced",
       max_results: 5,
     }),
   });
