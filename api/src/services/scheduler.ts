@@ -97,6 +97,31 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
       return lines.join("\n");
     }
 
+    case "financial_tracker": {
+      const symbols: string[] = config.symbols || ["AAPL", "TSLA"];
+      const lines: string[] = [];
+      const YahooFinance = (await import("yahoo-finance2")).default;
+      const yahooFinance = new YahooFinance();
+
+      for (const symbol of symbols) {
+        try {
+          const quote = await yahooFinance.quote(symbol);
+          const price = (quote as any).regularMarketPrice ?? 0;
+          const changePercent = (quote as any).regularMarketChangePercent ?? 0;
+          const sign = changePercent >= 0 ? "+" : "";
+          lines.push(
+            `${symbol}: $${price.toLocaleString()} (${sign}${changePercent.toFixed(1)}%)`
+          );
+        } catch (err: any) {
+          console.warn(`financial_tracker: failed to fetch ${symbol}: ${err.message}`);
+        }
+      }
+
+      return lines.length > 0
+        ? lines.join("\n")
+        : "Failed to fetch financial data for all symbols.";
+    }
+
     case "network_activity": {
       const { rows } = await db.query(
         "SELECT c.name, i.summary, i.created_at FROM interactions i JOIN contacts c ON c.id = i.contact_id WHERE i.created_at > NOW() - INTERVAL '24 hours' ORDER BY i.created_at DESC LIMIT 10"
