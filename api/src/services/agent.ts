@@ -5,6 +5,14 @@ import { draftOutreach } from "./claude.js";
 import { scrub } from "./scrubber.js";
 import { searchWeb } from "./search-web.js";
 import { generateBriefing } from "./scheduler.js";
+import {
+  dataTools,
+  fetchGithubActivity,
+  fetchMarketData,
+  fetchFinancialData,
+  fetchRssFeeds,
+  fetchNetworkActivity,
+} from "../tools/index.js";
 
 const anthropic = new Anthropic();
 
@@ -23,11 +31,23 @@ const SYSTEM_PROMPT = `You are the user's personal network and briefing assistan
 - People questions → contact_search
 - Message drafting → outreach_draft (searches contacts and drafts in one call — no need to call contact_search first)
 - interaction_history or mutual_connections → always call contact_search first; use the exact "id" field from the result. Never fabricate a UUID. For "who knows X" questions, use mutual_connections.
-- Briefing topic management → sub_agent_management
+- Recurring briefing topic management → sub_agent_management
 - Current events, news, weather → web_search
 - Past briefings / "what was in yesterday's briefing" → briefing_history
-- On-demand new briefing → trigger_briefing. If it returns empty, tell the user to add topics via sub_agent_management first.
+- On-demand full briefing (all topics) → trigger_briefing. If it returns empty, tell the user to add topics via sub_agent_management first.
+- Interaction frequency / "who do I talk to most" / top contacts / most active → top_contacts
+- GitHub repo activity → github_activity
+- Crypto prices → market_tracker
+- Stock/commodity prices → financial_tracker
+- Blog/feed updates → rss_feed
+- Recent network interactions → network_activity
 </tool-routing>
+
+<ad-hoc-vs-recurring>
+When the user asks about a data source ("check bitcoin price", "what's new in the react repo"), use the tool directly to fetch results now.
+When they want ongoing tracking ("track bitcoin daily", "add react repo to my briefing"), use sub_agent_management to create a recurring topic.
+If the intent is ambiguous, fetch the data first, then ask if they want it added to their daily briefing.
+</ad-hoc-vs-recurring>
 
 <disambiguation>
 - When contact_search returns multiple matches, present them to the user and ask which one they meant before calling interaction_history or mutual_connections.
@@ -45,6 +65,16 @@ const tools: Anthropic.Tool[] = [
         query: { type: "string", description: "The search query — a name, company, location, or interest" },
       },
       required: ["query"],
+    },
+  },
+  {
+    name: "top_contacts",
+    description: "Rank contacts by interaction frequency. Use when the user asks about most active relationships, who they talk to most, or top contacts.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        limit: { type: "number", description: "Number of contacts to return (default 10)" },
+      },
     },
   },
   {
@@ -125,6 +155,7 @@ const tools: Anthropic.Tool[] = [
       required: ["query"],
     },
   },
+  ...dataTools,
 ];
 
 async function executeTool(db: pg.Pool, name: string, input: any): Promise<string> {
@@ -141,6 +172,21 @@ async function executeTool(db: pg.Pool, name: string, input: any): Promise<strin
         id: r.id, name: r.name, company: r.company, role: r.role,
         location: r.location, email: r.email, notes: r.notes, score: r.score,
       })));
+    }
+
+    case "top_contacts": {
+      const { rows } = await db.query(
+        `SELECT c.id, c.name, c.company, c.role, COUNT(i.id) AS interaction_count,
+                MAX(i.date) AS last_interaction
+         FROM contacts c
+         JOIN interactions i ON c.id = i.contact_id
+         GROUP BY c.id, c.name, c.company, c.role
+         ORDER BY interaction_count DESC
+         LIMIT $1`,
+        [input.limit || 10]
+      );
+      if (rows.length === 0) return "No interaction data available yet.";
+      return JSON.stringify(rows);
     }
 
     case "interaction_history": {
@@ -232,6 +278,21 @@ async function executeTool(db: pg.Pool, name: string, input: any): Promise<strin
         return err.message || "Web search failed.";
       }
     }
+
+    case "github_activity":
+      return await fetchGithubActivity(input);
+
+    case "market_tracker":
+      return await fetchMarketData(input);
+
+    case "financial_tracker":
+      return await fetchFinancialData(input);
+
+    case "rss_feed":
+      return await fetchRssFeeds(input);
+
+    case "network_activity":
+      return await fetchNetworkActivity(db, input);
 
     default:
       return "Unknown tool.";

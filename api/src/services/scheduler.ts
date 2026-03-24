@@ -1,9 +1,15 @@
 import cron from "node-cron";
 import type pg from "pg";
-import Parser from "rss-parser";
 import { consolidateBriefing } from "./claude.js";
 import type { MessagingProvider } from "./messaging/index.js";
 import { searchWeb } from "./search-web.js";
+import {
+  fetchGithubActivity,
+  fetchMarketData,
+  fetchFinancialData,
+  fetchRssFeeds,
+  fetchNetworkActivity,
+} from "../tools/index.js";
 
 export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
   const briefingCron = process.env.BRIEFING_CRON || "0 7 * * *";
@@ -83,64 +89,14 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
   const config = agent.config || {};
 
   switch (agent.type) {
-    case "market_tracker": {
-      const assets = config.assets || ["bitcoin", "ethereum"];
-      const ids = assets.join(",");
-      const res = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
-      );
-      if (!res.ok) return "Failed to fetch market data.";
-      const data = await res.json();
-      const lines = Object.entries(data).map(
-        ([id, info]: [string, any]) =>
-          `${id}: $${info.usd?.toLocaleString()} (${info.usd_24h_change?.toFixed(1)}% 24h)`
-      );
-      return lines.join("\n");
-    }
+    case "market_tracker":
+      return await fetchMarketData({ assets: config.assets });
 
-    case "financial_tracker": {
-      const symbols: string[] = config.symbols || ["AAPL", "TSLA"];
-      const lines: string[] = [];
+    case "financial_tracker":
+      return await fetchFinancialData({ symbols: config.symbols || ["AAPL", "TSLA"] });
 
-      for (const symbol of symbols) {
-        try {
-          const res = await fetch(
-            `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
-            { headers: { "User-Agent": "Mozilla/5.0" } }
-          );
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json();
-          const meta = data.chart?.result?.[0]?.meta;
-          if (!meta) throw new Error("No data returned");
-          const price = meta.regularMarketPrice ?? 0;
-          const prevClose = meta.chartPreviousClose ?? 0;
-          const changePercent = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
-          const sign = changePercent >= 0 ? "+" : "";
-          const name = meta.longName || meta.shortName || symbol;
-          lines.push(
-            `${name} (${symbol}): $${price.toLocaleString()} (${sign}${changePercent.toFixed(1)}%)`
-          );
-        } catch (err: any) {
-          console.warn(`financial_tracker: failed to fetch ${symbol}: ${err.message}`);
-        }
-      }
-
-      return lines.length > 0
-        ? lines.join("\n")
-        : "Failed to fetch financial data for all symbols.";
-    }
-
-    case "network_activity": {
-      const { rows } = await db.query(
-        "SELECT c.name, i.summary, i.created_at FROM interactions i JOIN contacts c ON c.id = i.contact_id WHERE i.created_at > NOW() - INTERVAL '24 hours' ORDER BY i.created_at DESC LIMIT 10"
-      );
-      if (rows.length === 0) return "No network activity in the last 24 hours.";
-      const lines = rows.map(
-        (r: any) =>
-          `- ${r.name}: ${r.summary || "interaction recorded"} (${new Date(r.created_at).toLocaleTimeString()})`
-      );
-      return lines.join("\n");
-    }
+    case "network_activity":
+      return await fetchNetworkActivity(db, {});
 
     case "web_search": {
       const queries: string[] = config.queries || (config.query ? [config.query] : [agent.name]);
@@ -160,111 +116,11 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
       return lines.join("\n\n");
     }
 
-    case "github_activity": {
-      const repos: string[] = config.repos || [];
-      if (repos.length === 0) return "No repos configured for GitHub activity.";
+    case "github_activity":
+      return await fetchGithubActivity({ repos: config.repos || [], include_prs: config.include_prs });
 
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const headers: Record<string, string> = {
-        Accept: "application/vnd.github+json",
-      };
-      if (process.env.GITHUB_TOKEN) {
-        headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-      }
-
-      const sections: string[] = [];
-
-      for (const repo of repos) {
-        const lines: string[] = [`**${repo}**`];
-
-        const commitsRes = await fetch(
-          `https://api.github.com/repos/${encodeURI(repo)}/commits?since=${since}&per_page=10`,
-          { headers }
-        );
-        if (commitsRes.ok) {
-          const commits = await commitsRes.json();
-          if (commits.length > 0) {
-            lines.push(`Commits (${commits.length}):`);
-            for (const c of commits.slice(0, 5)) {
-              const msg = c.commit.message.split("\n")[0];
-              const author = c.commit.author?.name || "unknown";
-              lines.push(`- ${msg} (${author})`);
-            }
-            if (commits.length > 5) lines.push(`  ...and ${commits.length - 5} more`);
-          } else {
-            lines.push("No commits in the last 24h.");
-          }
-        } else {
-          lines.push(`Failed to fetch commits (${commitsRes.status}).`);
-        }
-
-        if (config.include_prs !== false) {
-          const prsRes = await fetch(
-            `https://api.github.com/repos/${encodeURI(repo)}/pulls?state=closed&sort=updated&direction=desc&per_page=5`,
-            { headers }
-          );
-          if (prsRes.ok) {
-            const prs = (await prsRes.json()).filter(
-              (pr: any) =>
-                pr.merged_at && new Date(pr.merged_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
-            );
-            if (prs.length > 0) {
-              lines.push(`Merged PRs (${prs.length}):`);
-              for (const pr of prs) {
-                lines.push(`- #${pr.number}: ${pr.title} (by ${pr.user?.login || "unknown"})`);
-              }
-            }
-          }
-        }
-
-        sections.push(lines.join("\n"));
-      }
-
-      return sections.join("\n\n");
-    }
-
-    case "rss_feed": {
-      const urls: string[] = config.urls || [];
-      if (urls.length === 0) return "No RSS feed URLs configured.";
-
-      const maxItems = config.max_items || 10;
-      const parser = new Parser({ timeout: 15000 });
-      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-      const allItems: { title: string; link: string; source: string; pubDate?: number }[] = [];
-
-      for (const url of urls) {
-        try {
-          const feed = await parser.parseURL(url);
-          const source = feed.title || new URL(url).hostname;
-          for (const item of feed.items) {
-            const pub = item.pubDate ? new Date(item.pubDate).getTime() : NaN;
-            allItems.push({
-              title: item.title || "Untitled",
-              link: item.link || url,
-              source,
-              pubDate: Number.isNaN(pub) ? undefined : pub,
-            });
-          }
-        } catch (err: any) {
-          console.warn(`RSS: failed to fetch ${url}: ${err.message}`);
-        }
-      }
-
-      if (allItems.length === 0) return "No RSS items found.";
-
-      const hasAnyDates = allItems.some((i) => i.pubDate !== undefined);
-      let filtered = hasAnyDates
-        ? allItems.filter((i) => i.pubDate !== undefined && i.pubDate > cutoff)
-        : allItems;
-
-      if (filtered.length === 0) filtered = allItems;
-      filtered = filtered
-        .sort((a, b) => (b.pubDate || 0) - (a.pubDate || 0))
-        .slice(0, maxItems);
-
-      const lines = filtered.map((i) => `- ${i.title} — ${i.source} (${i.link})`);
-      return lines.join("\n");
-    }
+    case "rss_feed":
+      return await fetchRssFeeds({ urls: config.urls || [], max_items: config.max_items });
 
     case "custom": {
       if (config.prompt) {
