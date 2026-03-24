@@ -305,7 +305,7 @@ export async function handleChatMessage(
   userMessage: string
 ): Promise<string> {
   const { rows: history } = await db.query(
-    "SELECT role, content FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 20",
+    "SELECT role, content FROM (SELECT role, content, created_at FROM chat_messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT 20) sub ORDER BY created_at ASC",
     [sessionId]
   );
 
