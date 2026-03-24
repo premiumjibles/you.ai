@@ -1,7 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { readFileSync } from "fs";
-import { unlink } from "fs/promises";
+import { readFile, unlink } from "fs/promises";
 import type pg from "pg";
 import type { DB } from "../db/client.js";
 import { parseMbox } from "../services/mbox-parser.js";
@@ -74,7 +73,7 @@ export function importRouter(db: DB): Router {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       await client.query("BEGIN");
-      const csvText = readFileSync(req.file.path, "utf-8");
+      const csvText = await readFile(req.file.path, "utf-8");
       const contacts = parseContactsCsv(csvText);
       const source = req.body.source || "csv";
       const results = [];

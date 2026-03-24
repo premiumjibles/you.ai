@@ -38,21 +38,27 @@ export async function fetchRssFeeds(params: {
   const cutoff = Date.now() - since_hours * 60 * 60 * 1000;
   const allItems: { title: string; link: string; source: string; pubDate?: number }[] = [];
 
-  for (const url of urls) {
-    try {
+  const feedResults = await Promise.allSettled(
+    urls.map(async (url) => {
       const feed = await parser.parseURL(url);
       const source = feed.title || new URL(url).hostname;
-      for (const item of feed.items) {
+      return feed.items.map((item) => {
         const pub = item.pubDate ? new Date(item.pubDate).getTime() : NaN;
-        allItems.push({
+        return {
           title: item.title || "Untitled",
           link: item.link || url,
           source,
           pubDate: Number.isNaN(pub) ? undefined : pub,
-        });
-      }
-    } catch (err: any) {
-      console.warn(`RSS: failed to fetch ${url}: ${err.message}`);
+        };
+      });
+    })
+  );
+
+  for (const r of feedResults) {
+    if (r.status === "fulfilled") {
+      allItems.push(...r.value);
+    } else {
+      console.warn(`RSS: failed to fetch feed: ${r.reason?.message || r.reason}`);
     }
   }
 

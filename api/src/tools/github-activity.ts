@@ -41,53 +41,53 @@ export async function fetchGithubActivity(params: {
     headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
 
-  const sections: string[] = [];
+  const sections = await Promise.all(
+    repos.map(async (repo) => {
+      const lines: string[] = [`**${repo}**`];
 
-  for (const repo of repos) {
-    const lines: string[] = [`**${repo}**`];
-
-    const commitsRes = await fetch(
-      `https://api.github.com/repos/${encodeURI(repo)}/commits?since=${since}&per_page=10`,
-      { headers }
-    );
-    if (commitsRes.ok) {
-      const commits = await commitsRes.json();
-      if (commits.length > 0) {
-        lines.push(`Commits (${commits.length}):`);
-        for (const c of commits.slice(0, 5)) {
-          const msg = c.commit.message.split("\n")[0];
-          const author = c.commit.author?.name || "unknown";
-          lines.push(`- ${msg} (${author})`);
-        }
-        if (commits.length > 5) lines.push(`  ...and ${commits.length - 5} more`);
-      } else {
-        lines.push(`No commits in the last ${since_hours}h.`);
-      }
-    } else {
-      lines.push(`Failed to fetch commits (${commitsRes.status}).`);
-    }
-
-    if (include_prs) {
-      const prsRes = await fetch(
-        `https://api.github.com/repos/${encodeURI(repo)}/pulls?state=closed&sort=updated&direction=desc&per_page=5`,
+      const commitsRes = await fetch(
+        `https://api.github.com/repos/${encodeURI(repo)}/commits?since=${since}&per_page=10`,
         { headers }
       );
-      if (prsRes.ok) {
-        const prs = (await prsRes.json()).filter(
-          (pr: any) =>
-            pr.merged_at && new Date(pr.merged_at).getTime() > Date.now() - since_hours * 60 * 60 * 1000
+      if (commitsRes.ok) {
+        const commits = await commitsRes.json();
+        if (commits.length > 0) {
+          lines.push(`Commits (${commits.length}):`);
+          for (const c of commits.slice(0, 5)) {
+            const msg = c.commit.message.split("\n")[0];
+            const author = c.commit.author?.name || "unknown";
+            lines.push(`- ${msg} (${author})`);
+          }
+          if (commits.length > 5) lines.push(`  ...and ${commits.length - 5} more`);
+        } else {
+          lines.push(`No commits in the last ${since_hours}h.`);
+        }
+      } else {
+        lines.push(`Failed to fetch commits (${commitsRes.status}).`);
+      }
+
+      if (include_prs) {
+        const prsRes = await fetch(
+          `https://api.github.com/repos/${encodeURI(repo)}/pulls?state=closed&sort=updated&direction=desc&per_page=5`,
+          { headers }
         );
-        if (prs.length > 0) {
-          lines.push(`Merged PRs (${prs.length}):`);
-          for (const pr of prs) {
-            lines.push(`- #${pr.number}: ${pr.title} (by ${pr.user?.login || "unknown"})`);
+        if (prsRes.ok) {
+          const prs = (await prsRes.json()).filter(
+            (pr: any) =>
+              pr.merged_at && new Date(pr.merged_at).getTime() > Date.now() - since_hours * 60 * 60 * 1000
+          );
+          if (prs.length > 0) {
+            lines.push(`Merged PRs (${prs.length}):`);
+            for (const pr of prs) {
+              lines.push(`- #${pr.number}: ${pr.title} (by ${pr.user?.login || "unknown"})`);
+            }
           }
         }
       }
-    }
 
-    sections.push(lines.join("\n"));
-  }
+      return lines.join("\n");
+    })
+  );
 
   return sections.join("\n\n");
 }

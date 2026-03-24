@@ -5,6 +5,7 @@ import type pg from "pg";
 import { upsertContact } from "./ingestion.js";
 import { scrub } from "./scrubber.js";
 import { nameOrHumanize } from "./name-utils.js";
+import { stripHtml } from "./html-utils.js";
 
 const BATCH_SIZE = 200;
 
@@ -19,21 +20,6 @@ interface PendingInteraction {
   summary: string | null;
   groupId: string | null;
   email: string;
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function unescapeMboxrd(lines: string[]): string {

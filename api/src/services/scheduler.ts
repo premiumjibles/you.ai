@@ -84,19 +84,16 @@ export async function generateBriefing(db: pg.Pool): Promise<string> {
     return "No briefing topics configured yet. Send me a message to add topics.";
   }
 
-  const outputs: { name: string; output: string }[] = [];
-
-  for (const agent of agents) {
-    try {
-      const output = await executeSubAgent(db, agent);
-      outputs.push({ name: agent.name, output });
-    } catch {
-      outputs.push({
-        name: agent.name,
-        output: `[Error: failed to fetch data for ${agent.name}]`,
-      });
-    }
-  }
+  const results = await Promise.allSettled(
+    agents.map((agent) => executeSubAgent(db, agent))
+  );
+  const outputs = agents.map((agent, i) => {
+    const r = results[i];
+    return {
+      name: agent.name,
+      output: r.status === "fulfilled" ? r.value : `[Error: failed to fetch data for ${agent.name}]`,
+    };
+  });
 
   const { rows: history } = await db.query(
     "SELECT date::text, content FROM briefings WHERE user_id = $1 ORDER BY date DESC LIMIT $2",
@@ -137,13 +134,15 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
 
     case "web_search": {
       const queries: string[] = config.queries || (config.query ? [config.query] : [agent.name]);
+      const searchResults = await Promise.allSettled(
+        queries.map((query) => searchWeb(query, { searchDepth: config.search_depth }))
+      );
       const allResults: { title: string; url: string; content: string }[] = [];
-      for (const query of queries) {
-        try {
-          const results = await searchWeb(query, { searchDepth: config.search_depth });
-          allResults.push(...results);
-        } catch (err: any) {
-          console.warn(`web_search: failed for query "${query}": ${err.message}`);
+      for (const r of searchResults) {
+        if (r.status === "fulfilled") {
+          allResults.push(...r.value);
+        } else {
+          console.warn(`web_search: failed: ${r.reason?.message || r.reason}`);
         }
       }
       if (allResults.length === 0) return "No web results found.";
