@@ -9,10 +9,27 @@ interface ParsedContact {
   location: string | null;
   linkedin_url: string | null;
   notes: string | null;
+  connected_on: string | null;
+}
+
+function stripPreamble(csvText: string): string {
+  const lines = csvText.split("\n");
+  const headerIndex = lines.findIndex(
+    (line) => line.includes("First Name") || line.includes("Email Address")
+  );
+  if (headerIndex <= 0) return csvText;
+  return lines.slice(headerIndex).join("\n");
+}
+
+function parseLinkedInDate(dateStr: string | undefined): string | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 export function parseContactsCsv(csvText: string): ParsedContact[] {
-  const records = parse(csvText, {
+  const cleaned = stripPreamble(csvText);
+  const records = parse(cleaned, {
     columns: true,
     skip_empty_lines: true,
     trim: true,
@@ -32,6 +49,7 @@ export function parseContactsCsv(csvText: string): ParsedContact[] {
       location: r["Location"] || r["location"] || r["City"] || null,
       linkedin_url: r["Profile URL"] || r["linkedin_url"] || null,
       notes: r["Notes"] || r["notes"] || null,
+      connected_on: parseLinkedInDate(r["Connected On"]),
     };
   });
 }

@@ -1,3 +1,5 @@
+import { createReadStream } from "fs";
+import { createInterface } from "readline";
 import { simpleParser } from "mailparser";
 import type pg from "pg";
 import { upsertContact } from "./ingestion.js";
@@ -8,30 +10,62 @@ interface ImportResult {
   interactions: number;
 }
 
-export async function parseMbox(buffer: Buffer, db: pg.Pool): Promise<ImportResult> {
-  const text = buffer.toString("utf-8");
-  const messages = splitMbox(text);
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
+function unescapeMboxrd(lines: string[]): string {
+  return lines.map((l) => (l.startsWith(">From ") ? l.slice(1) : l)).join("\n");
+}
+
+async function* splitMboxStream(filePath: string): AsyncGenerator<string> {
+  const rl = createInterface({ input: createReadStream(filePath, "utf-8"), crlfDelay: Infinity });
+  let current: string[] = [];
+
+  for await (const line of rl) {
+    if (line.startsWith("From ") && current.length > 0) {
+      yield unescapeMboxrd(current);
+      current = [];
+    }
+    current.push(line);
+  }
+  if (current.length > 0) {
+    yield unescapeMboxrd(current);
+  }
+}
+
+export async function parseMbox(filePath: string, db: pg.Pool): Promise<ImportResult> {
   const seen = new Set<string>();
   let contacts = 0;
   let interactions = 0;
 
   const ownerEmail = process.env.OWNER_EMAIL?.toLowerCase();
 
-  for (const raw of messages) {
+  for await (const raw of splitMboxStream(filePath)) {
     try {
       const parsed = await simpleParser(raw);
       const from = parsed.from?.value?.[0];
       if (!from?.address) continue;
 
       const groupId = parsed.messageId || null;
+      const bodyText = parsed.text || stripHtml(parsed.html || "");
       const rawContent = scrub(
-        `Subject: ${parsed.subject || "(no subject)"}\n\n${(parsed.text || "").slice(0, 2000)}`
+        `Subject: ${parsed.subject || "(no subject)"}\n\n${bodyText.slice(0, 2000)}`
       );
       const emailDate = parsed.date?.toISOString() || new Date().toISOString();
       const subject = parsed.subject || null;
 
-      // Collect all participant addresses from From, To, and CC
       const participants: { name: string; address: string }[] = [];
 
       if (from.address) {
@@ -65,7 +99,8 @@ export async function parseMbox(buffer: Buffer, db: pg.Pool): Promise<ImportResu
           `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
            SELECT c.id, 'email', $1, $2, $3, $4
            FROM contacts c WHERE c.email = $5
-           LIMIT 1`,
+           LIMIT 1
+           ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`,
           [emailDate, rawContent, subject, groupId, participant.address]
         );
         interactions++;
@@ -76,23 +111,4 @@ export async function parseMbox(buffer: Buffer, db: pg.Pool): Promise<ImportResu
   }
 
   return { contacts, interactions };
-}
-
-function splitMbox(text: string): string[] {
-  const messages: string[] = [];
-  const lines = text.split("\n");
-  let current: string[] = [];
-
-  for (const line of lines) {
-    if (line.startsWith("From ") && current.length > 0) {
-      messages.push(current.join("\n"));
-      current = [];
-    }
-    current.push(line);
-  }
-  if (current.length > 0) {
-    messages.push(current.join("\n"));
-  }
-
-  return messages;
 }

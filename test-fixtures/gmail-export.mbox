@@ -1,0 +1,132 @@
+From alice.chen@meridian.com Thu Jan 02 10:30:00 2025
+From: Alice Chen <alice.chen@meridian.com>
+To: sean@example.com
+Subject: Q1 Investment Thesis
+Date: Thu, 02 Jan 2025 10:30:00 +0000
+Message-ID: <msg001@meridian.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hi Sean,
+
+Wanted to share our updated Q1 investment thesis. We're seeing strong signals in the AI infrastructure space, particularly around inference optimization.
+
+>From our analysis, the market is shifting toward smaller, more efficient models.
+
+Let's discuss next week.
+
+Best,
+Alice
+
+From bob.nakamura@stripe.com Fri Jan 03 14:15:00 2025
+From: Bob Nakamura <bob.nakamura@stripe.com>
+To: sean@example.com
+Cc: priya.sharma@google.com, wei.zhang@anthropic.com
+Subject: Re: API Integration Discussion
+Date: Fri, 03 Jan 2025 14:15:00 +0000
+Message-ID: <msg002@stripe.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hey all,
+
+Thanks for the call yesterday. Here's a summary of what we discussed:
+
+1. Payment flow integration timeline
+2. Webhook reliability improvements
+3. Rate limiting strategy
+
+>From what I understood, we'll target a Feb launch. Let me know if I missed anything.
+
+Bob
+
+From notifications@linkedin.com Sat Jan 04 08:00:00 2025
+From: LinkedIn <notifications@linkedin.com>
+To: sean@example.com
+Subject: You have 5 new connection requests
+Date: Sat, 04 Jan 2025 08:00:00 +0000
+Message-ID: <msg003@linkedin.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html>
+<head><style>body { font-family: Arial, sans-serif; }</style></head>
+<body>
+<div class="container">
+<h2>You have new connection requests</h2>
+<p>Hi Sean,</p>
+<p>You have <strong>5 new connection requests</strong> waiting for you on LinkedIn.</p>
+<ul>
+<li>Jane Doe - VP Engineering at TechCorp</li>
+<li>John Smith - Product Manager at StartupXYZ</li>
+</ul>
+<p><a href="https://linkedin.com/notifications">View requests</a></p>
+</div>
+</body>
+</html>
+
+From maria@techfund.vc Mon Jan 06 09:45:00 2025
+From: =?utf-8?B?TWFyw61hIEdhcmPDrWEgTMOzcGV6?= <maria@techfund.vc>
+To: sean@example.com
+Subject: Deal Flow Update - Confidential
+Date: Mon, 06 Jan 2025 09:45:00 +0000
+Message-ID: <msg004@techfund.vc>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Sean,
+
+Quick update on the pipeline:
+
+- Series A: 3 companies in due diligence
+- Seed: 7 new applications this week
+- One portfolio company raising bridge round
+
+>From the LP meeting notes, we have capacity for 2 more deals this quarter.
+
+Regards,
+María
+
+From sarah.j@startup.io Tue Jan 07 16:20:00 2025
+From: Sarah Johnson <sarah.j@startup.io>
+To: sean@example.com, alice.chen@meridian.com
+Subject: Pitch Deck - Stealth Startup
+Date: Tue, 07 Jan 2025 16:20:00 +0000
+Message-ID: <msg005@startup.io>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="boundary123"
+
+--boundary123
+Content-Type: text/plain; charset=utf-8
+
+Hi Sean and Alice,
+
+Please find our latest pitch deck attached. Key highlights:
+
+- $2M ARR, growing 30% MoM
+- 150 enterprise customers
+- Seeking $15M Series A
+
+Would love to schedule a meeting next week.
+
+Best,
+Sarah
+
+--boundary123
+Content-Type: text/html; charset=utf-8
+
+<html>
+<body>
+<p>Hi Sean and Alice,</p>
+<p>Please find our latest pitch deck attached. Key highlights:</p>
+<ul>
+<li><strong>$2M ARR</strong>, growing 30% MoM</li>
+<li><strong>150 enterprise customers</strong></li>
+<li>Seeking <strong>$15M Series A</strong></li>
+</ul>
+<p>Would love to schedule a meeting next week.</p>
+<p>Best,<br>Sarah</p>
+</body>
+</html>
+
+--boundary123--

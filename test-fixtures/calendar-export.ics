@@ -1,0 +1,82 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Google Inc//Google Calendar 70.9054//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:evt001@google.com
+DTSTART:20250110T140000Z
+DTEND:20250110T150000Z
+SUMMARY:Portfolio Review Meeting
+DESCRIPTION:Quarterly review of portfolio performance.\nAgenda:\n1. Fund performance\n2. New deal pipeline\n3. Follow-on decisions
+LOCATION:123 Market St, San Francisco, CA
+STATUS:CONFIRMED
+ORGANIZER;CN="Alice Chen":mailto:alice.chen@meridian.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Sean Owner":mailto:sean@example.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="María García López":mailto:maria@techfund.vc
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Sarah Johnson":mailto:sarah.j@startup.io
+ATTENDEE;CUTYPE=ROOM;ROLE=NON-PARTICIPANT;CN="Conference Room A":mailto:conf-room-a@meridian.com
+END:VEVENT
+BEGIN:VEVENT
+UID:evt002@google.com
+DTSTART:20250113T100000Z
+DTEND:20250113T103000Z
+SUMMARY:Weekly Team Standup
+DESCRIPTION:Regular standup to sync on progress and blockers.
+LOCATION:Google Meet
+STATUS:CONFIRMED
+RRULE:FREQ=WEEKLY;COUNT=4
+ORGANIZER;CN="Sean Owner":mailto:sean@example.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Bob Nakamura":mailto:bob.nakamura@stripe.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Priya Sharma":mailto:priya.sharma@google.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Wei Zhang":mailto:wei.zhang@anthropic.com
+END:VEVENT
+BEGIN:VEVENT
+UID:evt003@google.com
+DTSTART:20250115T160000Z
+DTEND:20250115T170000Z
+SUMMARY:Cancelled Investor Dinner
+STATUS:CANCELLED
+ORGANIZER;CN="James O'Brien":mailto:james@obrien.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Sean Owner":mailto:sean@example.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Alice Chen":mailto:alice.chen@meridian.com
+END:VEVENT
+BEGIN:VEVENT
+UID:evt004@google.com
+DTSTART:20250117T090000Z
+DTEND:20250117T100000Z
+SUMMARY:Technical Deep Dive - ML Infrastructure
+DESCRIPTION:Review of inference pipeline optimizations and cost analysis.
+LOCATION:Zoom
+STATUS:CONFIRMED
+ORGANIZER;CN="Priya Sharma":mailto:priya.sharma@google.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Sean Owner":mailto:sean@example.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Wei Zhang":mailto:wei.zhang@anthropic.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=DECLINED;CN="René Müller":mailto:rene.m@databricks.com
+END:VEVENT
+BEGIN:VEVENT
+UID:evt005@google.com
+DTSTART:20250120T110000Z
+DTEND:20250120T120000Z
+SUMMARY:Pitch: Stealth Startup Series A
+DESCRIPTION:Sarah Johnson presenting Series A pitch.\n$2M ARR, 150 enterprise customers.\nSeeking $15M.
+LOCATION:Meridian Capital Office
+STATUS:CONFIRMED
+ORGANIZER;CN="Sarah Johnson":mailto:sarah.j@startup.io
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Sean Owner":mailto:sean@example.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Alice Chen":mailto:alice.chen@meridian.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="María García López":mailto:maria@techfund.vc
+END:VEVENT
+BEGIN:VEVENT
+UID:evt006@google.com
+DTSTART;VALUE=DATE:20250125
+DTEND;VALUE=DATE:20250126
+SUMMARY:Blockchain Conference - Day 1
+DESCRIPTION:Annual blockchain and crypto conference.\nPanels on DeFi, L2 scaling, and institutional adoption.
+LOCATION:Moscone Center, San Francisco
+STATUS:CONFIRMED
+ORGANIZER;CN="Events Team":mailto:events@blockconf.io
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Sean Owner":mailto:sean@example.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=TENTATIVE;CN="René Müller":mailto:rene.m@databricks.com
+END:VEVENT
+END:VCALENDAR
