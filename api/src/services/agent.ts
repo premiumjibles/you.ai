@@ -42,6 +42,7 @@ const SYSTEM_PROMPT = `You are the user's personal network and briefing assistan
 - Stock/commodity prices → financial_tracker
 - Blog/feed updates → rss_feed
 - Recent network interactions → network_activity
+- Briefing schedule / delivery time / timezone → briefing_schedule
 </tool-routing>
 
 <ad-hoc-vs-recurring>
@@ -54,7 +55,17 @@ If the intent is ambiguous, fetch the data first, then ask if they want it added
 - When contact_search returns multiple matches, present them to the user and ask which one they meant before calling interaction_history or mutual_connections.
 - When outreach_draft returns drafts, present each one and ask if the user wants to edit, approve, or discard.
 - When deactivating a sub-agent, list current topics first to find the matching ID unless the user provides it directly.
-</disambiguation>`;
+</disambiguation>
+
+<briefing-setup>
+Before answering any briefing or digest question, call briefing_schedule with action "get" to check current state.
+
+If briefing_time is not set, ask the user two things before proceeding:
+1. What time they want their daily briefing (store in 24h format, e.g. "07:00")
+2. Their city or region (resolve to an IANA timezone, e.g. "Singapore" → "Asia/Singapore", "London" → "Europe/London")
+
+Use IANA identifiers because the scheduler converts UTC to local time with them. If a location maps to multiple timezones (e.g. "Indiana", "Australia"), name the options and ask which one.
+</briefing-setup>`;
 
 const tools: Anthropic.Tool[] = [
   {
