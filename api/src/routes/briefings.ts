@@ -13,7 +13,7 @@ export function briefingsRouter(db: DB): Router {
 
       if (date) {
         const { rows } = await db.query(
-          "SELECT id, date, content, sub_agent_outputs, created_at FROM briefings WHERE user_id = $1 AND date = $2",
+          "SELECT id, date, content, sub_agent_outputs, created_at FROM briefings WHERE user_id = $1 AND date = $2 ORDER BY created_at DESC",
           [userId, date]
         );
         if (rows.length === 0) return res.status(404).json({ error: "No briefing for this date" });
