@@ -4,6 +4,7 @@ import { searchContacts } from "./search.js";
 import { draftOutreach } from "./claude.js";
 import { scrub } from "./scrubber.js";
 import { searchWeb } from "./search-web.js";
+import { generateBriefing } from "./scheduler.js";
 
 const anthropic = new Anthropic();
 
@@ -86,6 +87,14 @@ const tools: Anthropic.Tool[] = [
         contact_id: { type: "string", description: "The contact's UUID to find mutual connections for" },
       },
       required: ["contact_id"],
+    },
+  },
+  {
+    name: "trigger_briefing",
+    description: "Generate and deliver the daily briefing right now, on demand. Use this when the user asks for their briefing, digest, or summary outside the normal schedule.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
     },
   },
   {
@@ -191,6 +200,10 @@ async function executeTool(db: pg.Pool, name: string, input: any): Promise<strin
       );
       if (rows.length === 0) return "No mutual connections found for this contact.";
       return JSON.stringify(rows);
+    }
+
+    case "trigger_briefing": {
+      return await generateBriefing(db);
     }
 
     case "web_search": {

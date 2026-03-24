@@ -32,21 +32,13 @@ export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
   console.log(`Scheduler: urgent alerts cron set to "${alertCron}"`);
 }
 
-export async function runMorningBriefing(
-  db: pg.Pool,
-  provider: MessagingProvider,
-  ownerAddress: string
-): Promise<void> {
+export async function generateBriefing(db: pg.Pool): Promise<string> {
   const { rows: agents } = await db.query(
     "SELECT * FROM sub_agents WHERE user_id = 'sean' AND active = true"
   );
 
   if (agents.length === 0) {
-    await provider.send(
-      ownerAddress,
-      "Good morning! No briefing topics configured yet. Send me a message to add topics."
-    );
-    return;
+    return "No briefing topics configured yet. Send me a message to add topics.";
   }
 
   const outputs: { name: string; output: string }[] = [];
@@ -75,6 +67,15 @@ export async function runMorningBriefing(
     [content, JSON.stringify(outputs)]
   );
 
+  return content;
+}
+
+export async function runMorningBriefing(
+  db: pg.Pool,
+  provider: MessagingProvider,
+  ownerAddress: string
+): Promise<void> {
+  const content = await generateBriefing(db);
   await provider.send(ownerAddress, content);
 }
 

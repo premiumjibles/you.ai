@@ -1,10 +1,9 @@
 import { Router } from "express";
 import type { DB } from "../db/client.js";
 import { consolidateBriefing } from "../services/claude.js";
-import type { MessagingProvider } from "../services/messaging/index.js";
-import { runMorningBriefing } from "../services/scheduler.js";
+import { generateBriefing } from "../services/scheduler.js";
 
-export function briefingsRouter(db: DB, provider?: MessagingProvider): Router {
+export function briefingsRouter(db: DB): Router {
   const router = Router();
 
   router.get("/history", async (req, res) => {
@@ -63,18 +62,9 @@ export function briefingsRouter(db: DB, provider?: MessagingProvider): Router {
   });
 
   router.post("/trigger", async (_req, res) => {
-    if (!provider) {
-      res.status(503).json({ error: "Messaging provider not available" });
-      return;
-    }
-    const ownerAddress = provider.getOwnerAddress();
-    if (!ownerAddress) {
-      res.status(503).json({ error: "Owner address not configured" });
-      return;
-    }
     try {
-      await runMorningBriefing(db, provider, ownerAddress);
-      res.json({ ok: true, message: "Briefing triggered and sent" });
+      const content = await generateBriefing(db);
+      res.json({ ok: true, content });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
