@@ -241,10 +241,6 @@ validate_openai_key() {
   [[ "$1" == sk-* ]]
 }
 
-validate_tavily_key() {
-  [[ "$1" == tvly-* ]]
-}
-
 validate_github_token() {
   [[ "$1" == ghp_* ]] || [[ "$1" == github_pat_* ]]
 }
@@ -594,19 +590,6 @@ advanced_config() {
   fi
   echo ""
 
-  # Tavily
-  ui_info "Tavily Search API Key"
-  echo "  Enables web search in briefings and chat conversations."
-  echo "  Get a key from: https://tavily.com"
-  echo ""
-  local tavily_key
-  tavily_key=$(prompt_validated "Tavily API key (Enter to skip)" "password" "validate_tavily_key" "skippable")
-  if [ -n "$tavily_key" ]; then
-    env_set "$ENV_FILE" "TAVILY_API_KEY" "$tavily_key"
-    ui_success "Tavily API key saved"
-  fi
-  echo ""
-
   # GitHub
   ui_info "GitHub Token"
   echo "  Enables GitHub activity tracking in your morning briefings."
@@ -722,7 +705,7 @@ returning_user_menu() {
 rerun_setup() {
   echo ""
   ui_info "This will reconfigure your core settings (API key, messaging provider)."
-  echo "  Your optional integrations (OpenAI, Tavily, GitHub, etc.) will be preserved."
+  echo "  Your optional integrations (OpenAI, GitHub, etc.) will be preserved."
   echo ""
 
   if ! ui_confirm "Continue?"; then
@@ -731,9 +714,8 @@ rerun_setup() {
   fi
 
   # Save advanced config values from existing .env
-  local saved_openai saved_tavily saved_github saved_av saved_email saved_cron
+  local saved_openai saved_github saved_av saved_email saved_cron
   saved_openai=$(env_get "$ENV_FILE" "OPENAI_API_KEY")
-  saved_tavily=$(env_get "$ENV_FILE" "TAVILY_API_KEY")
   saved_github=$(env_get "$ENV_FILE" "GITHUB_TOKEN")
   saved_av=$(env_get "$ENV_FILE" "ALPHA_VANTAGE_API_KEY")
   saved_email=$(env_get "$ENV_FILE" "OWNER_EMAIL")
@@ -747,7 +729,6 @@ rerun_setup() {
 
   # Restore saved advanced config BEFORE starting services
   [ -n "$saved_openai" ] && env_set "$ENV_FILE" "OPENAI_API_KEY" "$saved_openai"
-  [ -n "$saved_tavily" ] && env_set "$ENV_FILE" "TAVILY_API_KEY" "$saved_tavily"
   [ -n "$saved_github" ] && env_set "$ENV_FILE" "GITHUB_TOKEN" "$saved_github"
   [ -n "$saved_av" ] && env_set "$ENV_FILE" "ALPHA_VANTAGE_API_KEY" "$saved_av"
   [ -n "$saved_email" ] && env_set "$ENV_FILE" "OWNER_EMAIL" "$saved_email"
