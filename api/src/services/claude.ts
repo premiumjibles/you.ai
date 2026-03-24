@@ -1,6 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic();
+import { getProvider } from "./llm/index.js";
 
 interface SubAgentOutput {
   name: string;
@@ -59,9 +57,10 @@ export function buildOutreachPrompt(
 export async function classifySearchIntent(
   query: string
 ): Promise<{ strategies: string[]; reasoning: string }> {
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 200,
+  const provider = getProvider();
+  const response = await provider.chat({
+    model: "fast",
+    maxTokens: 200,
     messages: [
       {
         role: "user",
@@ -74,7 +73,7 @@ Respond: {"strategies": [...], "reasoning": "..."}`,
       },
     ],
   });
-  const text = response.content[0].type === "text" ? response.content[0].text : "";
+  const text = response.content[0]?.type === "text" ? response.content[0].text : "";
   try {
     return JSON.parse(text);
   } catch {
@@ -95,12 +94,13 @@ export async function consolidateBriefing(
   history: BriefingHistory[]
 ): Promise<string> {
   const prompt = buildBriefingPrompt(outputs, history);
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 2000,
+  const provider = getProvider();
+  const response = await provider.chat({
+    model: "fast",
+    maxTokens: 2000,
     messages: [{ role: "user", content: prompt }],
   });
-  return response.content[0].type === "text" ? response.content[0].text : "";
+  return response.content[0]?.type === "text" ? response.content[0].text : "";
 }
 
 export async function draftOutreach(
@@ -109,12 +109,13 @@ export async function draftOutreach(
   interactions: any[]
 ): Promise<string> {
   const prompt = buildOutreachPrompt(campaignGoal, contact, interactions);
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 500,
+  const provider = getProvider();
+  const response = await provider.chat({
+    model: "fast",
+    maxTokens: 500,
     messages: [{ role: "user", content: prompt }],
   });
-  return response.content[0].type === "text" ? response.content[0].text : "";
+  return response.content[0]?.type === "text" ? response.content[0].text : "";
 }
 
 interface MemoContact {
@@ -194,18 +195,20 @@ export async function generateMemo(
   webContext?: string | null
 ): Promise<string> {
   const prompt = buildMemoPrompt(company, contacts, contactInteractions, webContext);
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 2000,
+  const provider = getProvider();
+  const response = await provider.chat({
+    model: "fast",
+    maxTokens: 2000,
     messages: [{ role: "user", content: prompt }],
   });
-  return response.content[0].type === "text" ? response.content[0].text : "";
+  return response.content[0]?.type === "text" ? response.content[0].text : "";
 }
 
 export async function summarizeInteraction(content: string): Promise<string> {
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 200,
+  const provider = getProvider();
+  const response = await provider.chat({
+    model: "fast",
+    maxTokens: 200,
     messages: [
       {
         role: "user",
@@ -213,5 +216,5 @@ export async function summarizeInteraction(content: string): Promise<string> {
       },
     ],
   });
-  return response.content[0].type === "text" ? response.content[0].text : "";
+  return response.content[0]?.type === "text" ? response.content[0].text : "";
 }
