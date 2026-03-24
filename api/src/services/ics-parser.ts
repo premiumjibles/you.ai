@@ -1,6 +1,7 @@
 import ical from "node-ical";
 import type pg from "pg";
 import { upsertContact } from "./ingestion.js";
+import { nameOrHumanize } from "./name-utils.js";
 
 interface ImportResult {
   contacts: number;
@@ -14,7 +15,7 @@ function extractEmail(attendee: any): string | null {
 
 function extractName(attendee: any, email: string): string {
   const cn = typeof attendee === "object" ? attendee?.params?.CN : null;
-  return typeof cn === "string" ? cn : email.split("@")[0];
+  return nameOrHumanize(typeof cn === "string" ? cn : undefined, email);
 }
 
 function shouldSkipAttendee(attendee: any): boolean {

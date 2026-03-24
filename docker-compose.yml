@@ -41,6 +41,7 @@ services:
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
       EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-youai}
       WHATSAPP_OWNER_JID: ${WHATSAPP_OWNER_JID:-}
+      OWNER_EMAIL: ${OWNER_EMAIL:-}
     ports:
       - "${API_PORT:-3000}:${API_PORT:-3000}"
     depends_on:

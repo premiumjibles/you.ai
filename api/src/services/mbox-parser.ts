@@ -4,6 +4,7 @@ import { simpleParser } from "mailparser";
 import type pg from "pg";
 import { upsertContact } from "./ingestion.js";
 import { scrub } from "./scrubber.js";
+import { nameOrHumanize } from "./name-utils.js";
 
 interface ImportResult {
   contacts: number;
@@ -55,6 +56,10 @@ export async function parseMbox(filePath: string, db: pg.Pool): Promise<ImportRe
   for await (const raw of splitMboxStream(filePath)) {
     try {
       const parsed = await simpleParser(raw);
+
+      const gmailLabels = parsed.headers?.get("x-gmail-labels");
+      if (typeof gmailLabels === "string" && gmailLabels.includes("Spam")) continue;
+
       const from = parsed.from?.value?.[0];
       if (!from?.address) continue;
 
@@ -69,7 +74,7 @@ export async function parseMbox(filePath: string, db: pg.Pool): Promise<ImportRe
       const participants: { name: string; address: string }[] = [];
 
       if (from.address) {
-        participants.push({ name: from.name || from.address.split("@")[0], address: from.address });
+        participants.push({ name: nameOrHumanize(from.name, from.address), address: from.address });
       }
 
       const toAddrs = Array.isArray(parsed.to) ? parsed.to : parsed.to ? [parsed.to] : [];
@@ -77,7 +82,7 @@ export async function parseMbox(filePath: string, db: pg.Pool): Promise<ImportRe
       for (const group of [...toAddrs, ...ccAddrs]) {
         for (const addr of group.value || []) {
           if (addr.address) {
-            participants.push({ name: addr.name || addr.address.split("@")[0], address: addr.address });
+            participants.push({ name: nameOrHumanize(addr.name, addr.address), address: addr.address });
           }
         }
       }
