@@ -8,24 +8,37 @@ import { generateBriefing } from "./scheduler.js";
 
 const anthropic = new Anthropic();
 
-const SYSTEM_PROMPT = `You are the user's personal AI assistant. You help manage contacts, search for people in the network, draft outreach messages, and provide briefing summaries.
+const SYSTEM_PROMPT = `You are the user's personal network and briefing assistant. You manage their professional contacts, daily briefings, and outreach drafts. You do not provide general advice, scheduling, or task management — redirect those requests politely.
 
-When the user asks about people, search for them. When they ask you to draft messages, use the outreach tool. Be conversational — this is a chat app, not email. Use plain text only — no markdown, no asterisks for bold, no formatting symbols. Use emoji sparingly for visual structure instead.
+<behavior>
+- Write in plain text. Use a single emoji at the start of each section header (e.g., "📊 Market Update"). No markdown, bullet symbols, or other formatting.
+- Be conversational and concise — this is a messaging interface.
+- When presenting contact search results, show name, role, and company. Include other fields only if relevant to the user's query.
+- When delivering briefings, relay every section in full. Do not summarize or omit topics.
+- If a search returns no results or you lack information, say so directly rather than guessing.
+- You have a maximum of 10 tool calls per conversation turn. If a task requires more, complete what you can and tell the user what remains.
+</behavior>
 
-When delivering briefings, always include every section in full. Do not summarize, condense, or omit any sections — the user wants to see all configured topics (markets, AI news, network, GitHub activity, RSS feeds, tech ecosystem, etc). Relay the briefing content as-is.
+<tool-routing>
+- People questions → contact_search
+- Message drafting → outreach_draft (searches contacts and drafts in one call — no need to call contact_search first)
+- interaction_history or mutual_connections → always call contact_search first; use the exact "id" field from the result. Never fabricate a UUID. For "who knows X" questions, use mutual_connections.
+- Briefing topic management → sub_agent_management
+- Current events, news, weather → web_search
+- Past briefings / "what was in yesterday's briefing" → briefing_history
+- On-demand new briefing → trigger_briefing. If it returns empty, tell the user to add topics via sub_agent_management first.
+</tool-routing>
 
-If the user wants to add or manage briefing topics, use the sub-agent management tool. Valid topic types are: market_tracker, network_activity, web_search, github_activity, rss_feed, financial_tracker, and custom. Use web_search for topics that need current information from the internet (news, weather, events, etc.). For github_activity, the config should include a "repos" array of "owner/repo" strings (e.g. ["vercel/next.js"]). For rss_feed, the config should include a "urls" array of feed URLs and an optional "max_items" number (e.g. { "urls": ["https://feeds.example.com/rss"], "max_items": 10 }). For financial_tracker, the config should include a "symbols" array of stock/commodity/index symbols (e.g. { "symbols": ["AAPL", "GC=F", "^GSPC"] }).
-
-You can search the web for current information using the web_search tool. Use it when the user asks about recent events, news, weather, or anything time-sensitive.
-
-When the user asks who knows someone, about mutual connections, or connective questions like "do I know anyone who also knows X", first search for the contact, then use the mutual_connections tool with their contact ID.
-
-When using interaction_history or mutual_connections, always call contact_search first and use the exact "id" field from the search results. Never fabricate or guess a UUID.`;
+<disambiguation>
+- When contact_search returns multiple matches, present them to the user and ask which one they meant before calling interaction_history or mutual_connections.
+- When outreach_draft returns drafts, present each one and ask if the user wants to edit, approve, or discard.
+- When deactivating a sub-agent, list current topics first to find the matching ID unless the user provides it directly.
+</disambiguation>`;
 
 const tools: Anthropic.Tool[] = [
   {
     name: "contact_search",
-    description: "Search the contact database by name, company, role, location, or interests. Use for any query about people in the network.",
+    description: "Search the contact database by name, company, role, location, or interests. Returns matching contacts with their details and relevance score.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -36,7 +49,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "interaction_history",
-    description: "Get recent interactions (emails, meetings, messages) with a specific contact. Always call contact_search first to obtain the contact's id — never guess or fabricate a UUID.",
+    description: "Get recent interactions (emails, meetings, messages) with a specific contact.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -52,9 +65,9 @@ const tools: Anthropic.Tool[] = [
       type: "object" as const,
       properties: {
         action: { type: "string", enum: ["list", "create", "deactivate"], description: "The action to perform" },
-        name: { type: "string", description: "Name for a new topic (required for create)" },
-        type: { type: "string", description: "Type: market_tracker, network_activity, web_search, github_activity, or custom (required for create)" },
-        config: { type: "object", description: "Configuration for the topic (optional)" },
+        name: { type: "string", description: "Display name for the topic (required for create)" },
+        type: { type: "string", enum: ["market_tracker", "network_activity", "web_search", "github_activity", "rss_feed", "financial_tracker", "custom"], description: "The sub-agent type (required for create)" },
+        config: { type: "object", description: "Configuration object (optional — defaults to {}). Shape depends on the type:\n- market_tracker / network_activity: not needed\n- github_activity: {\"repos\": [\"owner/repo\", ...]}\n- rss_feed: {\"urls\": [\"https://...\"], \"max_items\": 5}\n- financial_tracker: {\"symbols\": [\"AAPL\", \"GC=F\"]}\n- web_search: {\"query\": \"search terms\"}\n- custom: {\"prompt\": \"your prompt text\"}" },
         id: { type: "string", description: "ID of topic to deactivate (required for deactivate)" },
       },
       required: ["action"],
@@ -62,7 +75,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "briefing_history",
-    description: "Get recent daily briefings.",
+    description: "Retrieve past daily briefings. Use when the user asks about what was in a previous briefing or wants to compare briefings across days. For generating a new briefing, use trigger_briefing instead.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -72,11 +85,11 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "outreach_draft",
-    description: "Draft personalized outreach messages for contacts matching a query.",
+    description: "Search for contacts matching a query and draft personalized outreach messages for each. Returns an array of {contact, draft} objects. No need to call contact_search first.",
     input_schema: {
       type: "object" as const,
       properties: {
-        campaign_goal: { type: "string", description: "What the outreach is for" },
+        campaign_goal: { type: "string", description: "The goal of the outreach campaign (e.g., 'reconnect after conference', 'introduce new product', 'request intro')" },
         query: { type: "string", description: "Search query to find matching contacts" },
       },
       required: ["campaign_goal", "query"],

@@ -273,6 +273,7 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
         const response = await anthropic.messages.create({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 500,
+          system: `You are a briefing sub-agent producing one section of a daily briefing. Today's date: ${new Date().toISOString().split("T")[0]}. Respond with a concise plain-text report (under 300 words). No markdown formatting. You have no internet access and cannot look up current events. If the prompt requires real-time data you do not have, state that clearly and provide what background context you can from your training data.`,
           messages: [{ role: "user", content: config.prompt }],
         });
         return response.content[0].type === "text"
