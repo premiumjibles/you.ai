@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Constants
-GUM_VERSION="0.14.5"
+GUM_VERSION="0.17.0"
 GUM_DIR=".gum"
 GUM_BIN=""
 ENV_FILE=".env"
@@ -33,7 +33,7 @@ install_gum() {
   os=$(uname -s | tr '[:upper:]' '[:lower:]')
   arch=$(uname -m)
   case "$arch" in
-    x86_64)  arch="amd64" ;;
+    x86_64)  arch="x86_64" ;;
     aarch64|arm64) arch="arm64" ;;
     *) echo "Unsupported architecture: $arch — falling back to basic prompts."; return 0 ;;
   esac
@@ -582,9 +582,10 @@ show_whats_next() {
   ui_info "Setup complete! What would you like to do next?"
   echo ""
   local choice
-  choice=$(ui_choose "Configure optional integrations" "Start using your bot")
+  choice=$(ui_choose "Import your data" "Configure optional integrations" "Start using your bot")
 
   case "$choice" in
+    "Import"*) import_data ;;
     "Configure"*) advanced_config ;;
     *)
       echo ""
@@ -777,6 +778,338 @@ advanced_config() {
   ui_success "Advanced configuration complete!"
 }
 
+# ---------------------------------------------------------------------------
+# Import data wizard
+# ---------------------------------------------------------------------------
+
+# Resolve API base URL from .env
+get_api_url() {
+  local api_port
+  api_port=$(env_get "$ENV_FILE" "API_PORT")
+  api_port="${api_port:-3000}"
+  echo "http://localhost:${api_port}"
+}
+
+# Check the API is reachable, offer to start services if not
+ensure_api_running() {
+  local api_url
+  api_url=$(get_api_url)
+  if curl -sf "${api_url}/health" > /dev/null 2>&1; then
+    return 0
+  fi
+
+  echo ""
+  ui_error "API is not running at ${api_url}"
+  if ui_confirm "Start services now?"; then
+    local provider
+    provider=$(env_get "$ENV_FILE" "MESSAGING_PROVIDER")
+    MESSAGING_PROVIDER="${provider:-telegram}"
+    if ! start_services || ! wait_for_services; then
+      ui_error "Could not start services. Run 'docker compose up -d' and try again."
+      return 1
+    fi
+  else
+    echo "  Start services first: docker compose up -d"
+    return 1
+  fi
+}
+
+# Ensure OWNER_EMAIL is set (critical for filtering yourself out of imports)
+ensure_owner_email() {
+  local existing_email
+  existing_email=$(env_get "$ENV_FILE" "OWNER_EMAIL")
+  if [ -n "$existing_email" ]; then
+    ui_info "Owner email: $existing_email"
+    if ! ui_confirm "Is this correct?"; then
+      existing_email=""
+    fi
+  fi
+
+  if [ -z "$existing_email" ]; then
+    echo ""
+    ui_info "Your email address"
+    echo "  This filters you out of contact imports — without it, every email"
+    echo "  you've ever sent will create a contact entry for yourself."
+    echo ""
+    prompt_validated "Your email address" "text" "validate_email"
+    env_set "$ENV_FILE" "OWNER_EMAIL" "$PROMPT_RESULT"
+    ui_success "Owner email saved: $PROMPT_RESULT"
+
+    # Restart API so it picks up the new OWNER_EMAIL
+    if docker compose ps --status running --quiet 2>/dev/null | grep -q .; then
+      echo ""
+      ui_info "Restarting API to apply owner email..."
+      docker compose restart api > /dev/null 2>&1
+      sleep 3
+    fi
+  fi
+}
+
+# Send a file to an import endpoint and display results
+# Usage: send_import "/api/import/mbox" "/path/to/file.mbox" "Gmail"
+send_import() {
+  local endpoint="$1" filepath="$2" label="$3"
+  local api_url
+  api_url=$(get_api_url)
+
+  echo ""
+  local response http_code body
+  response=$(curl -s -w "\n%{http_code}" -X POST "${api_url}${endpoint}" -F "file=@${filepath}" 2>&1)
+  http_code=$(echo "$response" | tail -1)
+  body=$(echo "$response" | sed '$d')
+
+  if [ "$http_code" != "200" ]; then
+    ui_error "${label} import failed (HTTP ${http_code})"
+    echo "  $body"
+    return 1
+  fi
+
+  ui_success "${label} import complete!"
+
+  # Parse and display results from JSON response
+  # Handle both CSV-style (total/created/merged) and mbox/ics-style (contacts/interactions) responses
+  local contacts created merged interactions
+  contacts=$(echo "$body" | grep -o '"contacts":[0-9]*' | head -1 | cut -d: -f2)
+  created=$(echo "$body" | grep -o '"created":[0-9]*' | head -1 | cut -d: -f2)
+  merged=$(echo "$body" | grep -o '"merged":[0-9]*' | head -1 | cut -d: -f2)
+  interactions=$(echo "$body" | grep -o '"interactions":[0-9]*' | head -1 | cut -d: -f2)
+
+  if [ -n "$created" ] && [ -n "$merged" ]; then
+    echo "  Contacts created: $created"
+    echo "  Contacts merged with existing: $merged"
+  elif [ -n "$contacts" ]; then
+    echo "  Contacts processed: $contacts"
+  fi
+  if [ -n "$interactions" ]; then
+    echo "  Interactions logged: $interactions"
+  fi
+}
+
+# Prompt user for a file path, with tab completion hint
+# Usage: prompt_file "description" "expected_extension"
+# Sets PROMPT_RESULT to the validated file path
+prompt_file() {
+  local description="$1" extension="$2"
+  PROMPT_RESULT=""
+
+  while true; do
+    echo ""
+    local filepath
+    filepath=$(ui_input "Path to ${description} (or Enter to skip)")
+
+    if [ -z "$filepath" ]; then
+      return 1  # skipped
+    fi
+
+    # Expand ~ to home directory
+    filepath="${filepath/#\~/$HOME}"
+
+    if [ ! -f "$filepath" ]; then
+      ui_error "File not found: $filepath"
+      echo "  Check the path and try again."
+      continue
+    fi
+
+    if [ -n "$extension" ] && [[ "$filepath" != *"$extension" ]]; then
+      echo "  Warning: expected a ${extension} file but got: $(basename "$filepath")"
+      if ! ui_confirm "Use this file anyway?" "no"; then
+        continue
+      fi
+    fi
+
+    PROMPT_RESULT="$filepath"
+    return 0
+  done
+}
+
+import_data() {
+  echo ""
+  ui_header "Import Your Data"
+  echo ""
+  echo "  This wizard walks you through exporting your data and loading it in."
+  echo "  You can import any combination — skip what you don't have yet."
+  echo ""
+
+  # Ensure OWNER_EMAIL is set before any imports
+  ensure_owner_email
+
+  # Ensure API is running
+  if ! ensure_api_running; then
+    return 1
+  fi
+
+  local imported=0
+  local done_gmail="" done_calendar="" done_linkedin_conn="" done_linkedin_msg=""
+
+  while true; do
+    echo ""
+    if [ $imported -gt 0 ]; then
+      echo "  ─────────────────────────────────"
+      echo "  $imported source(s) imported so far."
+    fi
+    echo ""
+    echo "  What would you like to import next?"
+    echo ""
+
+    # Build menu with checkmarks for completed imports
+    local opt_gmail="Gmail (mbox from Google Takeout)"
+    local opt_calendar="Calendar (ics from Google Takeout)"
+    local opt_linkedin_conn="LinkedIn Connections (CSV)"
+    local opt_linkedin_msg="LinkedIn Messages (CSV)"
+    [ -n "$done_gmail" ] && opt_gmail="Gmail ✓ (import another mbox)"
+    [ -n "$done_calendar" ] && opt_calendar="Calendar ✓ (import another ics)"
+    [ -n "$done_linkedin_conn" ] && opt_linkedin_conn="LinkedIn Connections ✓ (import another)"
+    [ -n "$done_linkedin_msg" ] && opt_linkedin_msg="LinkedIn Messages ✓ (import another)"
+
+    local choice
+    choice=$(ui_choose \
+      "$opt_gmail" \
+      "$opt_calendar" \
+      "$opt_linkedin_conn" \
+      "$opt_linkedin_msg" \
+      "Other contacts (CSV)" \
+      "Done importing")
+
+    case "$choice" in
+      Gmail*)
+        if import_gmail; then done_gmail=1; imported=$((imported + 1)); fi
+        ;;
+      Calendar*)
+        if import_calendar; then done_calendar=1; imported=$((imported + 1)); fi
+        ;;
+      "LinkedIn C"*|"LinkedIn Connections"*)
+        if import_linkedin_connections; then done_linkedin_conn=1; imported=$((imported + 1)); fi
+        ;;
+      "LinkedIn M"*|"LinkedIn Messages"*)
+        if import_linkedin_messages; then done_linkedin_msg=1; imported=$((imported + 1)); fi
+        ;;
+      "Other"*)
+        if import_csv; then imported=$((imported + 1)); fi
+        ;;
+      "Done"*)
+        break
+        ;;
+    esac
+  done
+
+  echo ""
+  if [ $imported -gt 0 ]; then
+    ui_success "All done! Imported $imported data source(s)."
+  else
+    ui_info "No data imported. You can run this again anytime with: ./setup.sh"
+  fi
+  echo ""
+  echo "  Chat with your bot — try: \"search John\" or \"who do I know at Google?\""
+  echo ""
+}
+
+import_gmail() {
+  echo ""
+  ui_info "Gmail Import (mbox)"
+  echo ""
+  echo "  This imports your email contacts and interaction history."
+  echo "  Large mailboxes (10GB+) work fine but take a few minutes to process."
+  echo ""
+  echo "  How to export:"
+  echo "  1. Go to https://takeout.google.com"
+  echo "  2. Click 'Deselect all', then scroll down and select only 'Mail'"
+  echo "  3. Click 'Next step' → 'Create export'"
+  echo "  4. Google will email you when it's ready (can take hours for large mailboxes)"
+  echo "  5. Download and unzip — you'll get a file like 'All mail Including Spam and Trash.mbox'"
+  echo ""
+
+  if prompt_file "mbox file" ".mbox"; then
+    send_import "/api/import/mbox" "$PROMPT_RESULT" "Gmail"
+    return $?
+  fi
+  return 1
+}
+
+import_calendar() {
+  echo ""
+  ui_info "Calendar Import (ics)"
+  echo ""
+  echo "  This imports people you've had meetings with and logs each meeting."
+  echo ""
+  echo "  How to export:"
+  echo "  1. Go to https://takeout.google.com"
+  echo "  2. Click 'Deselect all', then scroll down and select only 'Calendar'"
+  echo "  3. Click 'Next step' → 'Create export'"
+  echo "  4. Download and unzip — you'll find .ics files for each calendar"
+  echo ""
+
+  if prompt_file "ics file" ".ics"; then
+    send_import "/api/import/ics" "$PROMPT_RESULT" "Calendar"
+    return $?
+  fi
+  return 1
+}
+
+import_linkedin_connections() {
+  echo ""
+  ui_info "LinkedIn Connections (CSV)"
+  echo ""
+  echo "  This imports your LinkedIn connections with name, company, role, and email."
+  echo ""
+  echo "  How to export:"
+  echo "  1. Go to https://www.linkedin.com/mypreferences/d/download-my-data"
+  echo "  2. Select 'Connections' and click 'Request archive'"
+  echo "  3. LinkedIn will email you when it's ready (usually within 10 minutes)"
+  echo "  4. Download and unzip — look for 'Connections.csv'"
+  echo ""
+
+  if prompt_file "Connections.csv file" ".csv"; then
+    send_import "/api/import/csv" "$PROMPT_RESULT" "LinkedIn Connections"
+    return $?
+  fi
+  return 1
+}
+
+import_linkedin_messages() {
+  echo ""
+  ui_info "LinkedIn Messages (CSV)"
+  echo ""
+  echo "  This imports your LinkedIn message history as interaction data."
+  echo ""
+  echo "  How to export:"
+  echo "  1. Go to https://www.linkedin.com/mypreferences/d/download-my-data"
+  echo "  2. Select 'Messages' and click 'Request archive'"
+  echo "  3. Download and unzip — look for 'messages.csv'"
+  echo ""
+
+  if prompt_file "messages.csv file" ".csv"; then
+    send_import "/api/import/linkedin-messages" "$PROMPT_RESULT" "LinkedIn Messages"
+    return $?
+  fi
+  return 1
+}
+
+import_csv() {
+  echo ""
+  ui_info "Contacts CSV"
+  echo ""
+  echo "  Import contacts from any CSV file (CRM export, spreadsheet, etc)."
+  echo "  The CSV should have headers. Recognized columns:"
+  echo "    First Name, Last Name (or Name)"
+  echo "    Email (or Email Address)"
+  echo "    Phone"
+  echo "    Company (or Organization)"
+  echo "    Position (or Title, Job Title, Role)"
+  echo "    Location (or City)"
+  echo "    LinkedIn URL"
+  echo ""
+
+  if prompt_file "CSV file" ".csv"; then
+    send_import "/api/import/csv" "$PROMPT_RESULT" "Contacts"
+    return $?
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Returning user menu
+# ---------------------------------------------------------------------------
+
 returning_user_menu() {
   ui_header "You.ai Setup"
   echo ""
@@ -784,9 +1117,12 @@ returning_user_menu() {
   echo ""
 
   local choice
-  choice=$(ui_choose "Configure optional integrations" "Re-run initial setup" "Start services" "Exit")
+  choice=$(ui_choose "Import your data" "Configure optional integrations" "Re-run initial setup" "Start services" "Exit")
 
   case "$choice" in
+    "Import"*)
+      import_data
+      ;;
     "Configure"*)
       advanced_config
       ;;
