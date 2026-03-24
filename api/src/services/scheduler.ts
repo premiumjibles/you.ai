@@ -101,17 +101,24 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
     case "financial_tracker": {
       const symbols: string[] = config.symbols || ["AAPL", "TSLA"];
       const lines: string[] = [];
-      const YahooFinance = (await import("yahoo-finance2")).default;
-      const yahooFinance = new YahooFinance();
 
       for (const symbol of symbols) {
         try {
-          const quote = await yahooFinance.quote(symbol);
-          const price = (quote as any).regularMarketPrice ?? 0;
-          const changePercent = (quote as any).regularMarketChangePercent ?? 0;
+          const res = await fetch(
+            `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
+            { headers: { "User-Agent": "Mozilla/5.0" } }
+          );
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const meta = data.chart?.result?.[0]?.meta;
+          if (!meta) throw new Error("No data returned");
+          const price = meta.regularMarketPrice ?? 0;
+          const prevClose = meta.chartPreviousClose ?? 0;
+          const changePercent = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
           const sign = changePercent >= 0 ? "+" : "";
+          const name = meta.longName || meta.shortName || symbol;
           lines.push(
-            `${symbol}: $${price.toLocaleString()} (${sign}${changePercent.toFixed(1)}%)`
+            `${name} (${symbol}): $${price.toLocaleString()} (${sign}${changePercent.toFixed(1)}%)`
           );
         } catch (err: any) {
           console.warn(`financial_tracker: failed to fetch ${symbol}: ${err.message}`);
@@ -136,17 +143,21 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
     }
 
     case "web_search": {
-      const query = config.query || agent.name;
-      try {
-        const results = await searchWeb(query, { searchDepth: config.search_depth });
-        if (results.length === 0) return "No web results found.";
-        const lines = results.map(
-          (r) => `**${r.title}**\n${r.url}\n${r.content}`
-        );
-        return lines.join("\n\n");
-      } catch (err: any) {
-        return err.message || "Web search failed.";
+      const queries: string[] = config.queries || (config.query ? [config.query] : [agent.name]);
+      const allResults: { title: string; url: string; content: string }[] = [];
+      for (const query of queries) {
+        try {
+          const results = await searchWeb(query, { searchDepth: config.search_depth });
+          allResults.push(...results);
+        } catch (err: any) {
+          console.warn(`web_search: failed for query "${query}": ${err.message}`);
+        }
       }
+      if (allResults.length === 0) return "No web results found.";
+      const lines = allResults.map(
+        (r) => `**${r.title}**\n${r.url}\n${r.content}`
+      );
+      return lines.join("\n\n");
     }
 
     case "github_activity": {
@@ -217,7 +228,7 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
       if (urls.length === 0) return "No RSS feed URLs configured.";
 
       const maxItems = config.max_items || 10;
-      const parser = new Parser({ timeout: 5000 });
+      const parser = new Parser({ timeout: 15000 });
       const cutoff = Date.now() - 24 * 60 * 60 * 1000;
       const allItems: { title: string; link: string; source: string; pubDate?: number }[] = [];
 
