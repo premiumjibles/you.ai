@@ -14,10 +14,25 @@ const upload = multer({ dest: "/tmp/uploads", limits: { fileSize: 500 * 1024 * 1
 export function importRouter(db: DB): Router {
   const router = Router();
 
+  router.get("/history", async (_req, res) => {
+    try {
+      const { rows } = await db.query(
+        "SELECT * FROM import_history ORDER BY created_at DESC LIMIT 50"
+      );
+      res.json({ imports: rows });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post("/mbox", upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       const result = await parseMbox(req.file.path, db);
+      await db.query(
+        "INSERT INTO import_history (filename, file_type, records_imported, duplicates_merged) VALUES ($1, $2, $3, $4)",
+        [req.file.originalname, "mbox", result.contacts, 0]
+      );
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -30,6 +45,10 @@ export function importRouter(db: DB): Router {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       const result = await parseIcs(req.file.path, db);
+      await db.query(
+        "INSERT INTO import_history (filename, file_type, records_imported, duplicates_merged) VALUES ($1, $2, $3, $4)",
+        [req.file.originalname, "ics", result.contacts, 0]
+      );
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -64,10 +83,16 @@ export function importRouter(db: DB): Router {
           }
         }
       }
+      const created = results.filter((r) => r.action === "created").length;
+      const merged = results.filter((r) => r.action === "merged").length;
+      await db.query(
+        "INSERT INTO import_history (filename, file_type, records_imported, duplicates_merged) VALUES ($1, $2, $3, $4)",
+        [req.file.originalname, "csv", created + merged, merged]
+      );
       res.json({
         total: results.length,
-        created: results.filter((r) => r.action === "created").length,
-        merged: results.filter((r) => r.action === "merged").length,
+        created,
+        merged,
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
