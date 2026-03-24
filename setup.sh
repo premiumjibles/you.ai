@@ -707,3 +707,20 @@ rerun_setup() {
   wait_for_services
   show_whats_next
 }
+
+# ---------------------------------------------------------------------------
+# Main entry point and mode detection
+# ---------------------------------------------------------------------------
+
+main() {
+  check_prerequisites
+  install_gum
+
+  if [ -f "$ENV_FILE" ]; then
+    returning_user_menu
+  else
+    fresh_install
+  fi
+}
+
+main "$@"
