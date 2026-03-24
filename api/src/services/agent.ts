@@ -11,7 +11,7 @@ const SYSTEM_PROMPT = `You are the user's personal AI assistant. You help manage
 
 When the user asks about people, search for them. When they ask you to draft messages, use the outreach tool. Be concise and conversational — this is a chat app, not email. Use plain text only — no markdown, no asterisks for bold, no formatting symbols. Use emoji sparingly for visual structure instead.
 
-If the user wants to add or manage briefing topics, use the sub-agent management tool. Valid topic types are: market_tracker, network_activity, web_search, and custom. Use web_search for topics that need current information from the internet (news, weather, events, etc.).
+If the user wants to add or manage briefing topics, use the sub-agent management tool. Valid topic types are: market_tracker, network_activity, web_search, github_activity, and custom. Use web_search for topics that need current information from the internet (news, weather, events, etc.). For github_activity, the config should include a "repos" array of "owner/repo" strings (e.g. ["vercel/next.js"]).
 
 You can search the web for current information using the web_search tool. Use it when the user asks about recent events, news, weather, or anything time-sensitive.`;
 
@@ -46,7 +46,7 @@ const tools: Anthropic.Tool[] = [
       properties: {
         action: { type: "string", enum: ["list", "create", "deactivate"], description: "The action to perform" },
         name: { type: "string", description: "Name for a new topic (required for create)" },
-        type: { type: "string", description: "Type: market_tracker, network_activity, or custom (required for create)" },
+        type: { type: "string", description: "Type: market_tracker, network_activity, web_search, github_activity, or custom (required for create)" },
         config: { type: "object", description: "Configuration for the topic (optional)" },
         id: { type: "string", description: "ID of topic to deactivate (required for deactivate)" },
       },
