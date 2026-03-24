@@ -13,7 +13,9 @@ When the user asks about people, search for them. When they ask you to draft mes
 
 If the user wants to add or manage briefing topics, use the sub-agent management tool. Valid topic types are: market_tracker, network_activity, web_search, github_activity, and custom. Use web_search for topics that need current information from the internet (news, weather, events, etc.). For github_activity, the config should include a "repos" array of "owner/repo" strings (e.g. ["vercel/next.js"]).
 
-You can search the web for current information using the web_search tool. Use it when the user asks about recent events, news, weather, or anything time-sensitive.`;
+You can search the web for current information using the web_search tool. Use it when the user asks about recent events, news, weather, or anything time-sensitive.
+
+When the user asks who knows someone, about mutual connections, or connective questions like "do I know anyone who also knows X", first search for the contact, then use the mutual_connections tool with their contact ID.`;
 
 const tools: Anthropic.Tool[] = [
   {
@@ -73,6 +75,17 @@ const tools: Anthropic.Tool[] = [
         query: { type: "string", description: "Search query to find matching contacts" },
       },
       required: ["campaign_goal", "query"],
+    },
+  },
+  {
+    name: "mutual_connections",
+    description: "Find people who appear in the same meetings or email threads as a given contact. Use this for connective questions like 'who else knows X' or 'do I know anyone who also knows X'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contact_id: { type: "string", description: "The contact's UUID to find mutual connections for" },
+      },
+      required: ["contact_id"],
     },
   },
   {
@@ -162,6 +175,22 @@ async function executeTool(db: pg.Pool, name: string, input: any): Promise<strin
         drafts.push({ contact: { name: contact.name, company: contact.company }, draft: scrub(draft) });
       }
       return JSON.stringify(drafts);
+    }
+
+    case "mutual_connections": {
+      const { rows } = await db.query(
+        `SELECT c.id, c.name, c.company, c.role, COUNT(DISTINCT i2.group_id) AS shared_events
+         FROM interactions i1
+         JOIN interactions i2 ON i1.group_id = i2.group_id AND i1.contact_id != i2.contact_id
+         JOIN contacts c ON c.id = i2.contact_id
+         WHERE i1.contact_id = $1 AND i1.group_id IS NOT NULL
+         GROUP BY c.id, c.name, c.company, c.role
+         ORDER BY shared_events DESC
+         LIMIT 20`,
+        [input.contact_id]
+      );
+      if (rows.length === 0) return "No mutual connections found for this contact.";
+      return JSON.stringify(rows);
     }
 
     case "web_search": {

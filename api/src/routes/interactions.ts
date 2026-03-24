@@ -8,13 +8,13 @@ export function interactionsRouter(db: DB): Router {
 
   router.post("/", async (req, res) => {
     try {
-      const { contact_id, type, date, raw_content } = req.body;
+      const { contact_id, type, date, raw_content, group_id } = req.body;
       const scrubbed = scrub(raw_content || "");
       const summary = raw_content ? await summarizeInteraction(scrubbed) : null;
       const { rows } = await db.query(
-        `INSERT INTO interactions (contact_id, type, date, summary, raw_content)
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [contact_id, type, date || new Date().toISOString(), summary, scrubbed]
+        `INSERT INTO interactions (contact_id, type, date, summary, raw_content, group_id)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [contact_id, type, date || new Date().toISOString(), summary, scrubbed, group_id || null]
       );
       await db.query(
         "UPDATE contacts SET last_interaction_date = $1 WHERE id = $2",

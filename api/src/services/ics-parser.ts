@@ -40,13 +40,14 @@ export async function parseIcs(buffer: Buffer, db: pg.Pool): Promise<ImportResul
 
       const eventDate = event.start instanceof Date ? event.start.toISOString() : new Date().toISOString();
       const summary = String(event.summary || "(no title)");
+      const groupId = (event as any).uid || null;
 
       await db.query(
-        `INSERT INTO interactions (contact_id, type, date, raw_content, summary)
-         SELECT c.id, 'meeting', $1, $2, $3
-         FROM contacts c WHERE c.email = $4
+        `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
+         SELECT c.id, 'meeting', $1, $2, $3, $4
+         FROM contacts c WHERE c.email = $5
          LIMIT 1`,
-        [eventDate, summary, summary, email]
+        [eventDate, summary, summary, groupId, email]
       );
       interactions++;
     }

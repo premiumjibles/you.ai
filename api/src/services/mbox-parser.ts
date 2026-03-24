@@ -16,38 +16,60 @@ export async function parseMbox(buffer: Buffer, db: pg.Pool): Promise<ImportResu
   let contacts = 0;
   let interactions = 0;
 
+  const ownerEmail = process.env.OWNER_EMAIL?.toLowerCase();
+
   for (const raw of messages) {
     try {
       const parsed = await simpleParser(raw);
       const from = parsed.from?.value?.[0];
       if (!from?.address) continue;
 
-      if (!seen.has(from.address)) {
-        seen.add(from.address);
-        await upsertContact(db, {
-          name: from.name || from.address.split("@")[0],
-          email: from.address,
-          source: "gmail",
-        });
-        contacts++;
-      }
-
+      const groupId = parsed.messageId || null;
       const rawContent = scrub(
         `Subject: ${parsed.subject || "(no subject)"}\n\n${(parsed.text || "").slice(0, 2000)}`
       );
-      await db.query(
-        `INSERT INTO interactions (contact_id, type, date, raw_content, summary)
-         SELECT c.id, 'email', $1, $2, $3
-         FROM contacts c WHERE c.email = $4
-         LIMIT 1`,
-        [
-          parsed.date?.toISOString() || new Date().toISOString(),
-          rawContent,
-          parsed.subject || null,
-          from.address,
-        ]
-      );
-      interactions++;
+      const emailDate = parsed.date?.toISOString() || new Date().toISOString();
+      const subject = parsed.subject || null;
+
+      // Collect all participant addresses from From, To, and CC
+      const participants: { name: string; address: string }[] = [];
+
+      if (from.address) {
+        participants.push({ name: from.name || from.address.split("@")[0], address: from.address });
+      }
+
+      const toAddrs = Array.isArray(parsed.to) ? parsed.to : parsed.to ? [parsed.to] : [];
+      const ccAddrs = Array.isArray(parsed.cc) ? parsed.cc : parsed.cc ? [parsed.cc] : [];
+      for (const group of [...toAddrs, ...ccAddrs]) {
+        for (const addr of group.value || []) {
+          if (addr.address) {
+            participants.push({ name: addr.name || addr.address.split("@")[0], address: addr.address });
+          }
+        }
+      }
+
+      for (const participant of participants) {
+        if (ownerEmail && participant.address.toLowerCase() === ownerEmail) continue;
+
+        if (!seen.has(participant.address)) {
+          seen.add(participant.address);
+          await upsertContact(db, {
+            name: participant.name,
+            email: participant.address,
+            source: "gmail",
+          });
+          contacts++;
+        }
+
+        await db.query(
+          `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
+           SELECT c.id, 'email', $1, $2, $3, $4
+           FROM contacts c WHERE c.email = $5
+           LIMIT 1`,
+          [emailDate, rawContent, subject, groupId, participant.address]
+        );
+        interactions++;
+      }
     } catch {
       // Skip malformed messages
     }

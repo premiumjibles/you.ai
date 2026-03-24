@@ -40,6 +40,7 @@ CREATE TABLE interactions (
     date TIMESTAMPTZ NOT NULL,
     summary TEXT,
     raw_content TEXT,
+    group_id TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -85,6 +86,7 @@ CREATE INDEX idx_contacts_email ON contacts (email) WHERE email IS NOT NULL;
 CREATE INDEX idx_contacts_phone ON contacts (phone) WHERE phone IS NOT NULL;
 CREATE INDEX idx_interactions_contact_id ON interactions (contact_id);
 CREATE INDEX idx_interactions_date ON interactions (date DESC);
+CREATE INDEX idx_interactions_group_id ON interactions (group_id) WHERE group_id IS NOT NULL;
 CREATE INDEX idx_sub_agents_user_active ON sub_agents (user_id) WHERE active = true;
 CREATE INDEX idx_briefings_user_date ON briefings (user_id, date DESC);
 CREATE INDEX idx_chat_messages_session ON chat_messages (session_id, created_at DESC);
