@@ -2,7 +2,7 @@ import cron from "node-cron";
 import type pg from "pg";
 import Parser from "rss-parser";
 import { consolidateBriefing } from "./claude.js";
-import { getProvider } from "./llm/index.js";
+import { getProvider, extractText } from "./llm/index.js";
 import type { MessagingProvider } from "./messaging/index.js";
 import { searchWeb } from "./search-web.js";
 
@@ -275,9 +275,7 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
           maxTokens: 500,
           messages: [{ role: "user", content: config.prompt }],
         });
-        return response.content[0]?.type === "text"
-          ? response.content[0].text
-          : "";
+        return extractText(response);
       }
       return "Custom topic configured but no prompt set.";
     }

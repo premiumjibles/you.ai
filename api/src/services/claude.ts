@@ -1,4 +1,4 @@
-import { getProvider } from "./llm/index.js";
+import { getProvider, extractText } from "./llm/index.js";
 
 interface SubAgentOutput {
   name: string;
@@ -73,7 +73,7 @@ Respond: {"strategies": [...], "reasoning": "..."}`,
       },
     ],
   });
-  const text = response.content[0]?.type === "text" ? response.content[0].text : "";
+  const text = extractText(response);
   try {
     return JSON.parse(text);
   } catch {
@@ -100,7 +100,7 @@ export async function consolidateBriefing(
     maxTokens: 2000,
     messages: [{ role: "user", content: prompt }],
   });
-  return response.content[0]?.type === "text" ? response.content[0].text : "";
+  return extractText(response);
 }
 
 export async function draftOutreach(
@@ -115,7 +115,7 @@ export async function draftOutreach(
     maxTokens: 500,
     messages: [{ role: "user", content: prompt }],
   });
-  return response.content[0]?.type === "text" ? response.content[0].text : "";
+  return extractText(response);
 }
 
 interface MemoContact {
@@ -201,7 +201,7 @@ export async function generateMemo(
     maxTokens: 2000,
     messages: [{ role: "user", content: prompt }],
   });
-  return response.content[0]?.type === "text" ? response.content[0].text : "";
+  return extractText(response);
 }
 
 export async function summarizeInteraction(content: string): Promise<string> {
@@ -216,5 +216,5 @@ export async function summarizeInteraction(content: string): Promise<string> {
       },
     ],
   });
-  return response.content[0]?.type === "text" ? response.content[0].text : "";
+  return extractText(response);
 }

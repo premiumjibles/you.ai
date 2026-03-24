@@ -18,3 +18,10 @@ const MODEL_CONFIG: Record<ProviderName, Record<ModelTier, string>> = {
 export function resolveModel(provider: ProviderName, tier: ModelTier): string {
   return MODEL_CONFIG[provider][tier];
 }
+
+export function embeddingConfig(): { model: string; dimensions: number } {
+  return {
+    model: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
+    dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || "1536"),
+  };
+}

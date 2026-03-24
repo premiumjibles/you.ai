@@ -21,6 +21,11 @@ export type {
 } from "./types.js";
 export { resolveModel } from "./models.js";
 
+export function extractText(response: ChatResponse): string {
+  const block = response.content[0];
+  return block?.type === "text" ? block.text : "";
+}
+
 export function getProvider(): LLMProvider {
   const name = process.env.LLM_PROVIDER || "anthropic";
   switch (name) {

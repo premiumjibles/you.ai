@@ -11,7 +11,7 @@ import type {
   ContentBlock,
   ToolDefinition,
 } from "./types.js";
-import { resolveModel } from "./models.js";
+import { resolveModel, embeddingConfig } from "./models.js";
 
 // --- Mapping functions (exported for testing) ---
 
@@ -96,11 +96,8 @@ export class AnthropicProvider implements LLMProvider {
   async embed(text: string): Promise<number[] | null> {
     if (!process.env.OPENAI_API_KEY) return null;
     const client = new OpenAI();
-    const response = await client.embeddings.create({
-      model: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
-      input: text,
-      dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || "1536"),
-    });
+    const { model, dimensions } = embeddingConfig();
+    const response = await client.embeddings.create({ model, input: text, dimensions });
     return response.data[0].embedding;
   }
 }

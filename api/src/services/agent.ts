@@ -256,15 +256,13 @@ export async function handleChatMessage(
       (block): block is Extract<ContentBlock, { type: "tool_use" }> => block.type === "tool_use"
     );
 
-    const toolResults: ContentBlock[] = [];
-    for (const block of toolUseBlocks) {
-      const result = await executeTool(db, block.name, block.input as any);
-      toolResults.push({
-        type: "tool_result",
+    const toolResults: ContentBlock[] = await Promise.all(
+      toolUseBlocks.map(async (block) => ({
+        type: "tool_result" as const,
         tool_use_id: block.id,
-        content: result,
-      });
-    }
+        content: await executeTool(db, block.name, block.input as any),
+      }))
+    );
 
     messages.push({ role: "assistant", content: response.content });
     messages.push({ role: "user", content: toolResults });
@@ -283,14 +281,10 @@ export async function handleChatMessage(
   );
   const assistantMessage = textBlocks.map((b) => b.text).join("\n") || "I couldn't generate a response.";
 
-  await db.query(
-    "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, 'user', $2)",
-    [sessionId, userMessage]
-  );
-  await db.query(
-    "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, 'assistant', $2)",
-    [sessionId, assistantMessage]
-  );
+  await Promise.all([
+    db.query("INSERT INTO chat_messages (session_id, role, content) VALUES ($1, 'user', $2)", [sessionId, userMessage]),
+    db.query("INSERT INTO chat_messages (session_id, role, content) VALUES ($1, 'assistant', $2)", [sessionId, assistantMessage]),
+  ]);
 
   return assistantMessage;
 }

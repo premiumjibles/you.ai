@@ -10,7 +10,7 @@ import type {
   ContentBlock,
   ToolDefinition,
 } from "./types.js";
-import { resolveModel } from "./models.js";
+import { resolveModel, embeddingConfig } from "./models.js";
 
 // --- Mapping functions (exported for testing) ---
 
@@ -45,13 +45,12 @@ export function toOpenAIMessages(
       const toolResults = msg.content.filter((b) => b.type === "tool_result");
       if (toolResults.length > 0) {
         for (const block of toolResults) {
-          if (block.type === "tool_result") {
-            result.push({
-              role: "tool",
-              tool_call_id: block.tool_use_id,
-              content: block.content,
-            });
-          }
+          if (block.type !== "tool_result") continue;
+          result.push({
+            role: "tool",
+            tool_call_id: block.tool_use_id,
+            content: block.content,
+          });
         }
         continue;
       }
@@ -173,11 +172,8 @@ export class VeniceProvider implements LLMProvider {
   async embed(text: string): Promise<number[] | null> {
     if (!process.env.VENICE_API_KEY) return null;
     const client = this.getClient();
-    const response = await client.embeddings.create({
-      model: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
-      input: text,
-      dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || "1536"),
-    });
+    const { model, dimensions } = embeddingConfig();
+    const response = await client.embeddings.create({ model, input: text, dimensions });
     return response.data[0].embedding;
   }
 }
