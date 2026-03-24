@@ -429,11 +429,11 @@ start_services() {
     api_port="$available_port"
   fi
 
-  local compose_cmd=(docker compose up -d)
-  local compose_hint="docker compose up -d"
+  local compose_cmd=(docker compose up -d --build)
+  local compose_hint="docker compose up -d --build"
   if [ "$MESSAGING_PROVIDER" = "whatsapp" ]; then
-    compose_cmd=(docker compose --profile whatsapp up -d)
-    compose_hint="docker compose --profile whatsapp up -d"
+    compose_cmd=(docker compose --profile whatsapp up -d --build)
+    compose_hint="docker compose --profile whatsapp up -d --build"
   fi
 
   echo ""
