@@ -41,13 +41,22 @@ export async function fetchGithubActivity(params: {
     headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
 
+  // Retry without token on 403 (org token policy blocks auth but public repos are still readable)
+  async function ghFetch(url: string): Promise<Response> {
+    let res = await fetch(url, { headers });
+    if (res.status === 403 && headers.Authorization) {
+      const { Authorization: _, ...noAuth } = headers;
+      res = await fetch(url, { headers: noAuth });
+    }
+    return res;
+  }
+
   const sections = await Promise.all(
     repos.map(async (repo) => {
       const lines: string[] = [`**${repo}**`];
 
-      const commitsRes = await fetch(
-        `https://api.github.com/repos/${encodeURI(repo)}/commits?since=${since}&per_page=10`,
-        { headers }
+      const commitsRes = await ghFetch(
+        `https://api.github.com/repos/${encodeURI(repo)}/commits?since=${since}&per_page=10`
       );
       if (commitsRes.ok) {
         const commits = await commitsRes.json();
@@ -67,9 +76,8 @@ export async function fetchGithubActivity(params: {
       }
 
       if (include_prs) {
-        const prsRes = await fetch(
-          `https://api.github.com/repos/${encodeURI(repo)}/pulls?state=closed&sort=updated&direction=desc&per_page=5`,
-          { headers }
+        const prsRes = await ghFetch(
+          `https://api.github.com/repos/${encodeURI(repo)}/pulls?state=closed&sort=updated&direction=desc&per_page=5`
         );
         if (prsRes.ok) {
           const prs = (await prsRes.json()).filter(
