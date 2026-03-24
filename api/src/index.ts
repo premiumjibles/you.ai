@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { fileURLToPath } from "url";
 import { contactsRouter } from "./routes/contacts.js";
 import { briefingsRouter } from "./routes/briefings.js";
 import { outreachRouter } from "./routes/outreach.js";
@@ -35,7 +34,6 @@ app.use("/api/settings", settingsRouter(pool));
 app.use("/api/github", githubRouter(pool));
 
 // Serve dashboard static files
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dashboardPath = path.join(__dirname, "../../dashboard/dist");
 app.use(express.static(dashboardPath));
 app.get("*", (_req, res) => {
