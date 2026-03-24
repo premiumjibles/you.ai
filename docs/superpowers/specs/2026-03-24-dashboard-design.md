@@ -5,8 +5,8 @@
 A web dashboard for You.ai that gives users a visual command center for their personal AI assistant. Surfaces daily briefings, GitHub activity, outreach draft management, data imports, and full configuration — all in a dark, minimal UI served from the existing Express app.
 
 **Key decisions:**
-- Multi-tenant (each user gets their own scoped dashboard)
-- Auth via bot-issued magic links (Telegram/WhatsApp)
+- Single-user, single-instance deployment (no multi-tenancy)
+- Auth via bot-issued magic links (Telegram/WhatsApp) — verifies the requester is the owner
 - React SPA served as static files from the existing Express server (single deployment)
 - Dark and minimal aesthetic (Linear/Vercel style)
 - Icon sidebar navigation
@@ -22,20 +22,20 @@ A web dashboard for You.ai that gives users a visual command center for their pe
 2. Bot generates a short-lived token, stores it in `dashboard_tokens` table
 3. Bot replies with a link: `https://<host>/auth?token=<token>`
 4. Express validates the token, creates a JWT session cookie, redirects to `/dashboard`
-5. Subsequent API calls include the JWT — all data scoped by `user_id`
+5. Subsequent API calls include the JWT — middleware verifies the session is valid
 
 ### Token Security
 
 - 32 bytes, cryptographically random (`crypto.randomBytes`), base64url encoded
 - Single-use: marked `used=true` on first consumption, reuse rejected
 - 5-minute expiry, enforced server-side
-- Rate limited: max 5 token generations per hour per user
+- Rate limited: max 5 token generations per hour
 
 ### JWT Session
 
 - Issued as `httpOnly`, `Secure`, `SameSite=Strict` cookie
 - 24-hour expiry — user requests a fresh link to re-auth
-- Contains `user_id` and `exp` claims
+- Contains `exp` claim (no user_id needed — single user)
 - Signed with a server-side secret (`DASHBOARD_JWT_SECRET` env var)
 
 ### New DB Table: `dashboard_tokens`
@@ -43,7 +43,6 @@ A web dashboard for You.ai that gives users a visual command center for their pe
 ```sql
 CREATE TABLE dashboard_tokens (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id TEXT NOT NULL,
   token TEXT UNIQUE NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   used BOOLEAN DEFAULT false,
@@ -54,8 +53,8 @@ CREATE INDEX idx_dashboard_tokens_token ON dashboard_tokens(token);
 
 ### Bot Command
 
-Add a `/dashboard` command handler to both messaging providers (Telegram and WhatsApp). When received:
-1. Check rate limit (5/hour for the user)
+Add a `/dashboard` command handler to both messaging providers (Telegram and WhatsApp). Only responds to the configured owner (validated by `TELEGRAM_OWNER_ID` or `WHATSAPP_OWNER_JID`). When received:
+1. Check rate limit (5/hour)
 2. Generate token, insert into `dashboard_tokens` with `expires_at = NOW() + 5 minutes`
 3. Reply with the URL
 
@@ -107,8 +106,8 @@ On narrow viewports (<768px), the sidebar collapses to a bottom tab bar with the
 
 ### Data Sources
 
-- `GET /api/briefings/history` — briefing content and `sub_agent_outputs`. Add a `?date=YYYY-MM-DD` query parameter to fetch a specific day's briefing. When provided, return the single briefing matching that date for the authenticated user (or 404). When omitted, retain existing behavior (returns the N most recent).
-- `POST /api/briefings/trigger` — on-demand generation. Must accept the authenticated `user_id` and pass it through to `generateBriefing()` (currently hardcoded to `'sean'`).
+- `GET /api/briefings/history` — briefing content and `sub_agent_outputs`. Add a `?date=YYYY-MM-DD` query parameter to fetch a specific day's briefing. When provided, return the single briefing matching that date (or 404). When omitted, retain existing behavior (returns the N most recent).
+- `POST /api/briefings/trigger` — on-demand generation via existing `generateBriefing()`.
 
 ---
 
@@ -143,12 +142,11 @@ Calls the `fast` model tier to generate a concise summary. Response cached in a 
 ```sql
 CREATE TABLE github_summaries (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id TEXT NOT NULL,
   repo TEXT NOT NULL,
   date DATE NOT NULL DEFAULT CURRENT_DATE,
   summary TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, repo, date)
+  UNIQUE(repo, date)
 );
 ```
 
@@ -180,7 +178,6 @@ CREATE TABLE github_summaries (
 ```sql
 CREATE TABLE outreach_drafts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id TEXT NOT NULL DEFAULT 'sean',
   contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
   message TEXT NOT NULL,
   context JSONB DEFAULT '{}',
@@ -189,7 +186,7 @@ CREATE TABLE outreach_drafts (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_outreach_drafts_user_status ON outreach_drafts(user_id, status);
+CREATE INDEX idx_outreach_drafts_status ON outreach_drafts(status);
 ```
 
 ### New Endpoints
@@ -222,20 +219,19 @@ The existing `POST /api/outreach/draft` endpoint should be updated to also persi
 ```sql
 CREATE TABLE import_history (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id TEXT NOT NULL DEFAULT 'sean',
   filename TEXT NOT NULL,
   file_type TEXT NOT NULL CHECK (file_type IN ('csv', 'mbox', 'ics')),
   records_imported INT DEFAULT 0,
   duplicates_merged INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_import_history_user ON import_history(user_id, created_at DESC);
+CREATE INDEX idx_import_history_created ON import_history(created_at DESC);
 ```
 
 ### New Endpoint
 
 ```
-GET /api/import/history — List past imports for the authenticated user
+GET /api/import/history — List past imports
 ```
 
 Existing import endpoints (`POST /api/import/csv`, `/mbox`, `/ics`) should be updated to log results to `import_history` after successful processing.
@@ -291,17 +287,14 @@ Toggle cards for each optional service:
 
 Each card shows enabled/disabled state and expands to show the key input when enabled.
 
-### New DB Table: `user_settings`
+### New DB Table: `app_settings`
 
 ```sql
-CREATE TABLE user_settings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id TEXT NOT NULL,
-  key TEXT NOT NULL,
-  value TEXT NOT NULL,  -- encrypted at rest
+CREATE TABLE app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,  -- encrypted at rest for sensitive keys
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, key)
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
@@ -309,60 +302,32 @@ Settings are encrypted at rest using a server-side encryption key (`SETTINGS_ENC
 
 ### Settings Consumption at Runtime
 
-A `getConfig(db, userId, key)` helper function provides the runtime config lookup layer. For each config key, it checks `user_settings` first (per-user override), then falls back to the corresponding `process.env` value (system default). This allows:
-- Self-hosted single-user deployments to continue using `.env` files with no DB settings at all
-- Multi-tenant deployments where each user provides their own API keys via the dashboard
-- Services like `getProvider()`, `scheduler.ts`, and `embeddings.ts` to call `getConfig()` instead of reading `process.env` directly
-
-The settings page in the dashboard writes to `user_settings`. The `.env` values remain the system-wide defaults for any key a user hasn't overridden.
+A `getConfig(db, key)` helper function checks `app_settings` first, then falls back to `process.env`. This allows the dashboard to update settings without editing `.env` files, while `.env` values remain the defaults for anything not overridden via the dashboard. Services like `getProvider()`, `scheduler.ts`, and `embeddings.ts` call `getConfig()` instead of reading `process.env` directly.
 
 ### New Endpoints
 
 ```
-GET   /api/settings          — Read all settings (masked secrets)
+GET   /api/settings          — Read all settings (secrets masked in response)
 PATCH /api/settings          — Update one or more settings
 ```
 
 ---
 
-## 8. Multi-Tenant Schema Migration
+## 8. Auth Middleware
 
-The `contacts` and `interactions` tables currently have no `user_id` column. To support multi-tenant data isolation:
-
-**Add `user_id` to `contacts`:**
-```sql
-ALTER TABLE contacts ADD COLUMN user_id TEXT NOT NULL DEFAULT 'sean';
-CREATE INDEX idx_contacts_user ON contacts(user_id);
-```
-
-**Add `user_id` to `interactions`:**
-```sql
-ALTER TABLE interactions ADD COLUMN user_id TEXT NOT NULL DEFAULT 'sean';
-CREATE INDEX idx_interactions_user ON interactions(user_id);
-```
-
-The `DEFAULT 'sean'` preserves existing data. All queries against these tables must be updated to filter by `user_id`. This migration must happen before auth middleware is enabled — it is a prerequisite for the dashboard to enforce data isolation.
-
-Update `init.sql` to include these columns for fresh deployments. Provide a migration script (`postgres/migrations/001-add-user-id.sql`) for existing deployments.
-
----
-
-## 9. Auth Middleware
-
-A new Express middleware applied to all `/api/*` routes (except `/auth`):
+A new Express middleware applied to dashboard-facing `/api/*` routes:
 
 1. Extract JWT from the `httpOnly` cookie
 2. Verify signature and expiry
-3. Attach `user_id` to `req` (e.g. `req.userId`)
-4. Return 401 if invalid or missing
+3. Return 401 if invalid or missing
 
-Existing route handlers switch from hardcoded `'sean'` user_id to `req.userId`.
+Since this is a single-user instance, the middleware simply validates that a valid session exists — no user_id extraction or data scoping needed. The existing hardcoded `'sean'` user_id in route handlers remains unchanged.
 
-For backward compatibility during the transition, if no JWT is present and `NODE_ENV !== 'production'`, fall back to the default user_id. This allows the Telegram/WhatsApp bot to continue calling internal API endpoints without auth during development.
+The middleware is only applied to routes called by the dashboard. Internal calls from the bot/scheduler (e.g. `generateBriefing(db)`) bypass HTTP entirely and are unaffected.
 
 ---
 
-## 10. Frontend Architecture
+## 9. Frontend Architecture
 
 ### Tech Stack
 
@@ -421,7 +386,7 @@ dashboard/
 
 ---
 
-## 11. New Environment Variables
+## 10. New Environment Variables
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
@@ -432,7 +397,7 @@ Both should be added to `setup.sh` auto-generation and `.env.example`.
 
 ---
 
-## 12. Visual Design Tokens
+## 11. Visual Design Tokens
 
 Consistent with the dark minimal aesthetic:
 
