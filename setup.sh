@@ -523,3 +523,115 @@ fresh_install() {
   wait_for_services
   show_whats_next
 }
+
+advanced_config() {
+  echo ""
+  ui_header "Optional Integrations"
+  echo "  Press Enter to skip any integration you don't need."
+  echo ""
+
+  # OpenAI
+  ui_info "OpenAI API Key"
+  echo "  Enables semantic search — find contacts by meaning, not just name matching."
+  echo "  Get a key from: https://platform.openai.com/api-keys"
+  echo ""
+  local openai_key
+  openai_key=$(prompt_validated "OpenAI API key (Enter to skip)" "password" "validate_openai_key" "skippable")
+  if [ -n "$openai_key" ]; then
+    env_set "$ENV_FILE" "OPENAI_API_KEY" "$openai_key"
+    ui_success "OpenAI API key saved"
+  fi
+  echo ""
+
+  # Tavily
+  ui_info "Tavily Search API Key"
+  echo "  Enables web search in briefings and chat conversations."
+  echo "  Get a key from: https://tavily.com"
+  echo ""
+  local tavily_key
+  tavily_key=$(prompt_validated "Tavily API key (Enter to skip)" "password" "validate_tavily_key" "skippable")
+  if [ -n "$tavily_key" ]; then
+    env_set "$ENV_FILE" "TAVILY_API_KEY" "$tavily_key"
+    ui_success "Tavily API key saved"
+  fi
+  echo ""
+
+  # GitHub
+  ui_info "GitHub Token"
+  echo "  Enables GitHub activity tracking in your morning briefings."
+  echo "  Create a token at: https://github.com/settings/tokens"
+  echo ""
+  local github_token
+  github_token=$(prompt_validated "GitHub token (Enter to skip)" "password" "validate_github_token" "skippable")
+  if [ -n "$github_token" ]; then
+    env_set "$ENV_FILE" "GITHUB_TOKEN" "$github_token"
+    ui_success "GitHub token saved"
+  fi
+  echo ""
+
+  # Alpha Vantage
+  ui_info "Alpha Vantage API Key"
+  echo "  Enables commodities and forex data in briefings."
+  echo "  Get a free key from: https://www.alphavantage.co/support/#api-key"
+  echo ""
+  local av_key
+  av_key=$(ui_input "Alpha Vantage API key (Enter to skip)")
+  if [ -n "$av_key" ]; then
+    env_set "$ENV_FILE" "ALPHA_VANTAGE_API_KEY" "$av_key"
+    ui_success "Alpha Vantage API key saved"
+  fi
+  echo ""
+
+  # Briefing schedule
+  ui_info "Briefing Schedule"
+  local current_cron
+  current_cron=$(env_get "$ENV_FILE" "BRIEFING_CRON")
+  current_cron="${current_cron:-0 7 * * *}"
+  echo "  When should your morning briefing run?"
+  echo "  Current: $current_cron"
+  echo ""
+  local hour
+  hour=$(ui_choose "6:00 AM" "7:00 AM (default)" "8:00 AM" "9:00 AM" "Custom cron expression" "Skip")
+  case "$hour" in
+    "6:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 6 * * *" ;;
+    "7:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 7 * * *" ;;
+    "8:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 8 * * *" ;;
+    "9:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 9 * * *" ;;
+    "Custom"*)
+      local cron_expr
+      cron_expr=$(ui_input "Cron expression (e.g., 0 7 * * *)")
+      if [ -n "$cron_expr" ]; then
+        env_set "$ENV_FILE" "BRIEFING_CRON" "$cron_expr"
+      fi
+      ;;
+    *) ;; # Skip
+  esac
+  echo ""
+
+  # Owner email
+  ui_info "Owner Email"
+  echo "  Your email — used to filter yourself out of contact imports."
+  echo ""
+  local owner_email
+  owner_email=$(prompt_validated "Email address (Enter to skip)" "text" "validate_email" "skippable")
+  if [ -n "$owner_email" ]; then
+    env_set "$ENV_FILE" "OWNER_EMAIL" "$owner_email"
+    ui_success "Owner email saved"
+  fi
+
+  # Offer restart if services are running
+  echo ""
+  if docker compose ps --status running --quiet 2>/dev/null | grep -q .; then
+    if ui_confirm "Services are running. Restart to apply changes?"; then
+      local provider
+      provider=$(env_get "$ENV_FILE" "MESSAGING_PROVIDER")
+      MESSAGING_PROVIDER="${provider:-telegram}"
+      ui_spin "Stopping services..." docker compose down
+      start_services
+      wait_for_services
+    fi
+  fi
+
+  echo ""
+  ui_success "Advanced configuration complete!"
+}
