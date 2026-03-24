@@ -1,6 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic();
+const HAIKU_MODEL = "claude-haiku-4-5-20251001";
+
+function extractText(response: Anthropic.Message): string {
+  return response.content[0].type === "text" ? response.content[0].text : "";
+}
 
 function briefingSystem(): string {
   return `You consolidate sub-agent reports into a single daily briefing for a chat app. Today's date: ${new Date().toISOString().split("T")[0]}.
@@ -91,7 +96,7 @@ export async function classifySearchIntent(
   query: string
 ): Promise<{ strategies: string[]; reasoning: string }> {
   const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: HAIKU_MODEL,
     max_tokens: 200,
     system: `Classify contact search queries into one or more strategies. Respond with a JSON object only, no surrounding text.
 
@@ -123,7 +128,7 @@ Output: {"strategies": ["fuzzy_name", "keyword"], "reasoning": "Name plus compan
       },
     ],
   });
-  const text = response.content[0].type === "text" ? response.content[0].text : "";
+  const text = extractText(response);
   try {
     return JSON.parse(text);
   } catch {
@@ -145,12 +150,12 @@ export async function consolidateBriefing(
 ): Promise<string> {
   const prompt = buildBriefingPrompt(outputs, history);
   const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: HAIKU_MODEL,
     max_tokens: 2000,
     system: briefingSystem(),
     messages: [{ role: "user", content: prompt }],
   });
-  return response.content[0].type === "text" ? response.content[0].text : "";
+  return extractText(response);
 }
 
 export async function draftOutreach(
@@ -160,12 +165,12 @@ export async function draftOutreach(
 ): Promise<string> {
   const prompt = buildOutreachPrompt(campaignGoal, contact, interactions);
   const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: HAIKU_MODEL,
     max_tokens: 500,
     system: OUTREACH_SYSTEM,
     messages: [{ role: "user", content: prompt }],
   });
-  return response.content[0].type === "text" ? response.content[0].text : "";
+  return extractText(response);
 }
 
 interface MemoContact {
@@ -229,17 +234,26 @@ export async function generateMemo(
 ): Promise<string> {
   const prompt = buildMemoPrompt(company, contacts, contactInteractions, webContext);
   const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: HAIKU_MODEL,
     max_tokens: 2000,
     system: MEMO_SYSTEM,
     messages: [{ role: "user", content: prompt }],
   });
-  return response.content[0].type === "text" ? response.content[0].text : "";
+  return extractText(response);
+}
+
+export async function summarizeGitHubActivity(repo: string, content: string): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: HAIKU_MODEL,
+    max_tokens: 300,
+    messages: [{ role: "user", content: `Summarize this GitHub activity for ${repo} in 2-3 sentences:\n\n${content}` }],
+  });
+  return extractText(response);
 }
 
 export async function summarizeInteraction(content: string): Promise<string> {
   const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: HAIKU_MODEL,
     max_tokens: 200,
     system: "Summarize this interaction in 1-2 sentences. Lead with the main topic, then key decisions or action items. Name participants when present. Ignore email signatures, legal disclaimers, and forwarded headers.",
     messages: [
@@ -249,5 +263,5 @@ export async function summarizeInteraction(content: string): Promise<string> {
       },
     ],
   });
-  return response.content[0].type === "text" ? response.content[0].text : "";
+  return extractText(response);
 }

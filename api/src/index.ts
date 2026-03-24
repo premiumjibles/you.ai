@@ -1,4 +1,5 @@
 import express from "express";
+import path from "path";
 import { contactsRouter } from "./routes/contacts.js";
 import { briefingsRouter } from "./routes/briefings.js";
 import { outreachRouter } from "./routes/outreach.js";
@@ -6,7 +7,10 @@ import { interactionsRouter } from "./routes/interactions.js";
 import { subAgentsRouter } from "./routes/sub-agents.js";
 import { importRouter } from "./routes/import.js";
 import { chatRouter } from "./routes/chat.js";
+import { settingsRouter } from "./routes/settings.js";
+import { githubRouter } from "./routes/github.js";
 import pool from "./db/client.js";
+import { runMigrations } from "./db/migrate.js";
 import { startScheduler } from "./services/scheduler.js";
 import { createMessagingProvider } from "./services/messaging/index.js";
 import { processIncomingMessage } from "./services/messaging/handler.js";
@@ -27,8 +31,20 @@ app.use("/api/interactions", interactionsRouter(pool));
 app.use("/api/sub-agents", subAgentsRouter(pool));
 app.use("/api/import", importRouter(pool));
 app.use("/api/chat", chatRouter(pool, provider));
+app.use("/api/settings", settingsRouter(pool));
+app.use("/api/github", githubRouter(pool));
+
+// Serve dashboard static files
+const dashboardPath = path.join(__dirname, "../../dashboard/dist");
+app.use(express.static(dashboardPath));
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(dashboardPath, "index.html"));
+});
 
 const port = parseInt(process.env.API_PORT || "3000");
+runMigrations(pool).catch((err) => {
+  console.error("Migration warning:", err.message);
+});
 app.listen(port, process.env.API_HOST || "0.0.0.0", () => {
   console.log(`API server listening on port ${port}`);
   console.log(`Messaging provider: ${provider.name}`);

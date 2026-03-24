@@ -5,8 +5,8 @@
 A web dashboard for You.ai that gives users a visual command center for their personal AI assistant. Surfaces daily briefings, GitHub activity, outreach draft management, data imports, and full configuration — all in a dark, minimal UI served from the existing Express app.
 
 **Key decisions:**
-- Multi-tenant (each user gets their own scoped dashboard)
-- Auth via bot-issued magic links (Telegram/WhatsApp)
+- Single-user, single-instance deployment (no multi-tenancy)
+- No authentication — dashboard served on localhost, access controlled by being on the machine
 - React SPA served as static files from the existing Express server (single deployment)
 - Dark and minimal aesthetic (Linear/Vercel style)
 - Icon sidebar navigation
@@ -14,54 +14,7 @@ A web dashboard for You.ai that gives users a visual command center for their pe
 
 ---
 
-## 1. Authentication
-
-### Flow
-
-1. User sends `/dashboard` (or "open dashboard") to the bot via Telegram/WhatsApp
-2. Bot generates a short-lived token, stores it in `dashboard_tokens` table
-3. Bot replies with a link: `https://<host>/auth?token=<token>`
-4. Express validates the token, creates a JWT session cookie, redirects to `/dashboard`
-5. Subsequent API calls include the JWT — all data scoped by `user_id`
-
-### Token Security
-
-- 32 bytes, cryptographically random (`crypto.randomBytes`), base64url encoded
-- Single-use: marked `used=true` on first consumption, reuse rejected
-- 5-minute expiry, enforced server-side
-- Rate limited: max 5 token generations per hour per user
-
-### JWT Session
-
-- Issued as `httpOnly`, `Secure`, `SameSite=Strict` cookie
-- 24-hour expiry — user requests a fresh link to re-auth
-- Contains `user_id` and `exp` claims
-- Signed with a server-side secret (`DASHBOARD_JWT_SECRET` env var)
-
-### New DB Table: `dashboard_tokens`
-
-```sql
-CREATE TABLE dashboard_tokens (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id TEXT NOT NULL,
-  token TEXT UNIQUE NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  used BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX idx_dashboard_tokens_token ON dashboard_tokens(token);
-```
-
-### Bot Command
-
-Add a `/dashboard` command handler to the messaging layer. When received:
-1. Check rate limit (5/hour for the user)
-2. Generate token, insert into `dashboard_tokens` with `expires_at = NOW() + 5 minutes`
-3. Reply with the URL
-
----
-
-## 2. Navigation & Layout
+## 1. Navigation & Layout
 
 ### Icon Sidebar
 
@@ -75,7 +28,7 @@ A narrow (~56px) icon rail on the left side of the screen. Each icon has a toolt
 | Upload | Import | Always visible |
 | Gear | Settings | Always visible |
 
-Bottom of sidebar: user initial/avatar circle + logout action.
+Bottom of sidebar: settings gear icon.
 
 Active page indicated by a highlighted icon background (indigo tint).
 
@@ -85,7 +38,7 @@ On narrow viewports (<768px), the sidebar collapses to a bottom tab bar with the
 
 ---
 
-## 3. Briefings Page (Home / Default)
+## 2. Briefings Page (Home / Default)
 
 ### Layout (top to bottom)
 
@@ -107,12 +60,12 @@ On narrow viewports (<768px), the sidebar collapses to a bottom tab bar with the
 
 ### Data Sources
 
-- `GET /api/briefings/history` — briefing content and `sub_agent_outputs`
-- `POST /api/briefings/trigger` — on-demand generation
+- `GET /api/briefings/history` — briefing content and `sub_agent_outputs`. Add a `?date=YYYY-MM-DD` query parameter to fetch a specific day's briefing. When provided, return the single briefing matching that date (or 404). When omitted, retain existing behavior (returns the N most recent).
+- `POST /api/briefings/trigger` — on-demand generation via existing `generateBriefing()`.
 
 ---
 
-## 4. GitHub Page
+## 3. GitHub Page
 
 Only rendered in the sidebar navigation if the user has at least one active `github_activity` sub-agent.
 
@@ -136,11 +89,24 @@ Body: { repo: "owner/repo", commits: [...], prs: [...] }
 Response: { summary: "..." }
 ```
 
-Calls the `fast` model tier to generate a concise summary. Response cached in memory or a simple cache table for the day.
+Calls the `fast` model tier to generate a concise summary. Response cached in a `github_summaries` table — one summary per repo per day. Subsequent requests for the same repo on the same day return the cached result.
+
+### New DB Table: `github_summaries`
+
+```sql
+CREATE TABLE github_summaries (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  repo TEXT NOT NULL,
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  summary TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(repo, date)
+);
+```
 
 ---
 
-## 5. Outreach Page
+## 4. Outreach Page
 
 ### Layout
 
@@ -166,7 +132,6 @@ Calls the `fast` model tier to generate a concise summary. Response cached in me
 ```sql
 CREATE TABLE outreach_drafts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id TEXT NOT NULL DEFAULT 'sean',
   contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
   message TEXT NOT NULL,
   context JSONB DEFAULT '{}',
@@ -175,7 +140,7 @@ CREATE TABLE outreach_drafts (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_outreach_drafts_user_status ON outreach_drafts(user_id, status);
+CREATE INDEX idx_outreach_drafts_status ON outreach_drafts(status);
 ```
 
 ### New Endpoints
@@ -189,7 +154,7 @@ The existing `POST /api/outreach/draft` endpoint should be updated to also persi
 
 ---
 
-## 6. Import Page
+## 5. Import Page
 
 ### Layout
 
@@ -208,27 +173,26 @@ The existing `POST /api/outreach/draft` endpoint should be updated to also persi
 ```sql
 CREATE TABLE import_history (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id TEXT NOT NULL DEFAULT 'sean',
   filename TEXT NOT NULL,
   file_type TEXT NOT NULL CHECK (file_type IN ('csv', 'mbox', 'ics')),
   records_imported INT DEFAULT 0,
   duplicates_merged INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_import_history_user ON import_history(user_id, created_at DESC);
+CREATE INDEX idx_import_history_created ON import_history(created_at DESC);
 ```
 
 ### New Endpoint
 
 ```
-GET /api/import/history — List past imports for the authenticated user
+GET /api/import/history — List past imports
 ```
 
 Existing import endpoints (`POST /api/import/csv`, `/mbox`, `/ics`) should be updated to log results to `import_history` after successful processing.
 
 ---
 
-## 7. Settings Page
+## 6. Settings Page
 
 Form-based UI organized into collapsible sections, each with its own save button.
 
@@ -277,47 +241,33 @@ Toggle cards for each optional service:
 
 Each card shows enabled/disabled state and expands to show the key input when enabled.
 
-### New DB Table: `user_settings`
+### New DB Table: `app_settings`
 
 ```sql
-CREATE TABLE user_settings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id TEXT NOT NULL,
-  key TEXT NOT NULL,
-  value TEXT NOT NULL,  -- encrypted at rest
+CREATE TABLE app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,  -- encrypted at rest for sensitive keys
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, key)
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
 Settings are encrypted at rest using a server-side encryption key (`SETTINGS_ENCRYPTION_KEY` env var). API responses return masked values for sensitive keys (e.g. `sk-ant-****xyz`).
 
+### Settings Consumption at Runtime
+
+A `getConfig(db, key)` helper function checks `app_settings` first, then falls back to `process.env`. This allows the dashboard to update settings without editing `.env` files, while `.env` values remain the defaults for anything not overridden via the dashboard. Services like `getProvider()`, `scheduler.ts`, and `embeddings.ts` call `getConfig()` instead of reading `process.env` directly.
+
 ### New Endpoints
 
 ```
-GET   /api/settings          — Read all settings (masked secrets)
+GET   /api/settings          — Read all settings (secrets masked in response)
 PATCH /api/settings          — Update one or more settings
 ```
 
 ---
 
-## 8. Auth Middleware
-
-A new Express middleware applied to all `/api/*` routes (except `/auth`):
-
-1. Extract JWT from the `httpOnly` cookie
-2. Verify signature and expiry
-3. Attach `user_id` to `req` (e.g. `req.userId`)
-4. Return 401 if invalid or missing
-
-Existing route handlers switch from hardcoded `'sean'` user_id to `req.userId`.
-
-For backward compatibility during the transition, if no JWT is present and `NODE_ENV !== 'production'`, fall back to the default user_id. This allows the Telegram/WhatsApp bot to continue calling internal API endpoints without auth during development.
-
----
-
-## 9. Frontend Architecture
+## 7. Frontend Architecture
 
 ### Tech Stack
 
@@ -338,8 +288,8 @@ dashboard/
 ├── package.json
 ├── src/
 │   ├── main.tsx              # Entry point
-│   ├── App.tsx               # Router + layout shell + auth guard
-│   ├── api.ts                # Fetch wrapper (handles 401 → redirect to re-auth)
+│   ├── App.tsx               # Router + layout shell
+│   ├── api.ts                # Fetch wrapper for API calls
 │   ├── components/
 │   │   ├── Sidebar.tsx       # Icon rail + tooltips + active state
 │   │   ├── HeroCard.tsx      # Consolidated briefing display
@@ -357,7 +307,6 @@ dashboard/
 │   │   ├── Import.tsx
 │   │   └── Settings.tsx
 │   └── hooks/
-│       ├── useAuth.ts        # Auth state, logout, 401 handling
 │       └── useApi.ts         # Data fetching with loading/error states
 ```
 
@@ -376,18 +325,17 @@ dashboard/
 
 ---
 
-## 10. New Environment Variables
+## 8. New Environment Variables
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `DASHBOARD_JWT_SECRET` | Signing key for JWT session tokens | Yes (auto-generated by setup.sh) |
 | `SETTINGS_ENCRYPTION_KEY` | Encryption key for sensitive settings at rest | Yes (auto-generated by setup.sh) |
 
-Both should be added to `setup.sh` auto-generation and `.env.example`.
+Should be added to `setup.sh` auto-generation and `.env.example`.
 
 ---
 
-## 11. Visual Design Tokens
+## 9. Visual Design Tokens
 
 Consistent with the dark minimal aesthetic:
 
