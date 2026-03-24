@@ -51,7 +51,7 @@ function detectOwnerUrl(records: any[]): string | null {
   return maxUrl;
 }
 
-export async function parseLinkedInMessages(filePath: string, db: pg.Pool): Promise<ImportResult> {
+export async function parseLinkedInMessages(filePath: string, db: pg.Pool | pg.PoolClient): Promise<ImportResult> {
   const csvText = readFileSync(filePath, "utf-8");
   const records = parse(csvText, {
     columns: true,

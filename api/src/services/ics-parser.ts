@@ -36,7 +36,7 @@ function buildRawContent(event: any): string {
   return parts.filter(Boolean).join("\n");
 }
 
-export async function parseIcs(filePath: string, db: pg.Pool): Promise<ImportResult> {
+export async function parseIcs(filePath: string, db: pg.Pool | pg.PoolClient): Promise<ImportResult> {
   const events = await ical.async.parseFile(filePath);
 
   const seen = new Set<string>();

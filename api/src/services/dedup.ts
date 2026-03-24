@@ -1,7 +1,9 @@
 import type pg from "pg";
 
+type Queryable = pg.Pool | pg.PoolClient;
+
 export async function findDuplicate(
-  db: pg.Pool,
+  db: Queryable,
   input: { name: string; email?: string | null; phone?: string | null; company?: string | null; linkedin_url?: string | null }
 ): Promise<any | null> {
   // 1. Email match (highest confidence)

@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import type pg from "pg";
 import { consolidateBriefing } from "./claude.js";
+import { getConfig } from "./config.js";
 import type { MessagingProvider } from "./messaging/index.js";
 import { searchWeb } from "./search-web.js";
 import {
@@ -11,9 +12,53 @@ import {
   fetchNetworkActivity,
 } from "../tools/index.js";
 
+export function getUserLocalTime(now: Date, timezone: string): string {
+  return now.toLocaleTimeString("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+export function isWithinBriefingWindow(briefingTime: string, currentTime: string): boolean {
+  const [bH, bM] = briefingTime.split(":").map(Number);
+  const [cH, cM] = currentTime.split(":").map(Number);
+  const briefingMin = bH * 60 + bM;
+  const currentMin = cH * 60 + cM;
+  let diff = currentMin - briefingMin;
+  if (diff < -1435) diff += 1440; // handle midnight rollover (1440 = 24*60)
+  return diff >= 0 && diff < 5;
+}
+
+export async function heartbeat(
+  db: pg.Pool,
+  provider: MessagingProvider,
+  ownerAddress: string
+): Promise<void> {
+  const briefingTime = await getConfig(db, "briefing_time");
+  const timezone = await getConfig(db, "timezone");
+
+  if (briefingTime && timezone) {
+    const now = new Date();
+    const currentTime = getUserLocalTime(now, timezone);
+    if (isWithinBriefingWindow(briefingTime, currentTime)) {
+      const userId = process.env.USER_ID || "default";
+      const localDate = now.toLocaleDateString("en-CA", { timeZone: timezone });
+      const { rows } = await db.query(
+        "SELECT COUNT(*) FROM briefings WHERE user_id = $1 AND date = $2",
+        [userId, localDate]
+      );
+      if (parseInt(rows[0].count) === 0) {
+        await runMorningBriefing(db, provider, ownerAddress);
+      }
+    }
+  }
+
+  await runUrgentAlerts(db, provider, ownerAddress);
+}
+
 export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
-  const briefingCron = process.env.BRIEFING_CRON || "0 7 * * *";
-  const alertCron = process.env.ALERT_CRON || "*/15 * * * *";
   const ownerAddress = provider.getOwnerAddress();
 
   if (!ownerAddress) {
@@ -21,26 +66,18 @@ export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
     return;
   }
 
-  // Morning briefing
-  cron.schedule(briefingCron, () => {
-    runMorningBriefing(db, provider, ownerAddress).catch((err) =>
-      console.error("Morning briefing failed:", err)
+  cron.schedule("*/5 * * * *", () => {
+    heartbeat(db, provider, ownerAddress).catch((err) =>
+      console.error("Heartbeat failed:", err)
     );
   });
-  console.log(`Scheduler: morning briefing cron set to "${briefingCron}"`);
-
-  // Urgent alerts
-  cron.schedule(alertCron, () => {
-    runUrgentAlerts(db, provider, ownerAddress).catch((err) =>
-      console.error("Urgent alerts check failed:", err)
-    );
-  });
-  console.log(`Scheduler: urgent alerts cron set to "${alertCron}"`);
+  console.log("Scheduler: heartbeat running every 5 minutes");
 }
 
 export async function generateBriefing(db: pg.Pool): Promise<string> {
+  const userId = process.env.USER_ID || "default";
   const { rows: agents } = await db.query(
-    "SELECT * FROM sub_agents WHERE user_id = 'sean' AND active = true"
+    "SELECT * FROM sub_agents WHERE user_id = $1 AND active = true", [userId]
   );
 
   if (agents.length === 0) {
@@ -62,15 +99,15 @@ export async function generateBriefing(db: pg.Pool): Promise<string> {
   }
 
   const { rows: history } = await db.query(
-    "SELECT date::text, content FROM briefings WHERE user_id = 'sean' ORDER BY date DESC LIMIT $1",
-    [parseInt(process.env.BRIEFING_HISTORY_COUNT || "5")]
+    "SELECT date::text, content FROM briefings WHERE user_id = $1 ORDER BY date DESC LIMIT $2",
+    [userId, parseInt(process.env.BRIEFING_HISTORY_COUNT || "5")]
   );
 
   const content = await consolidateBriefing(outputs, history);
 
   await db.query(
-    "INSERT INTO briefings (user_id, content, sub_agent_outputs) VALUES ('sean', $1, $2)",
-    [content, JSON.stringify(outputs)]
+    "INSERT INTO briefings (user_id, content, sub_agent_outputs) VALUES ($1, $2, $3)",
+    [userId, content, JSON.stringify(outputs)]
   );
 
   return content;
@@ -149,8 +186,9 @@ async function runUrgentAlerts(
   provider: MessagingProvider,
   ownerAddress: string
 ): Promise<void> {
+  const userId = process.env.USER_ID || "default";
   const { rows: agents } = await db.query(
-    "SELECT * FROM sub_agents WHERE user_id = 'sean' AND active = true"
+    "SELECT * FROM sub_agents WHERE user_id = $1 AND active = true", [userId]
   );
 
   for (const agent of agents) {

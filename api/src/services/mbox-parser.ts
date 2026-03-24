@@ -6,9 +6,19 @@ import { upsertContact } from "./ingestion.js";
 import { scrub } from "./scrubber.js";
 import { nameOrHumanize } from "./name-utils.js";
 
+const BATCH_SIZE = 200;
+
 interface ImportResult {
   contacts: number;
   interactions: number;
+}
+
+interface PendingInteraction {
+  date: string;
+  rawContent: string;
+  summary: string | null;
+  groupId: string | null;
+  email: string;
 }
 
 function stripHtml(html: string): string {
@@ -46,10 +56,24 @@ async function* splitMboxStream(filePath: string): AsyncGenerator<string> {
   }
 }
 
-export async function parseMbox(filePath: string, db: pg.Pool): Promise<ImportResult> {
+async function flushInteractions(db: pg.Pool | pg.PoolClient, batch: PendingInteraction[]): Promise<void> {
+  if (batch.length === 0) return;
+  const values: any[] = [];
+  const placeholders: string[] = [];
+  for (let i = 0; i < batch.length; i++) {
+    const off = i * 5;
+    placeholders.push(`(SELECT c.id FROM contacts c WHERE c.email = $${off + 5} LIMIT 1), 'email', $${off + 1}, $${off + 2}, $${off + 3}, $${off + 4}`);
+    values.push(batch[i].date, batch[i].rawContent, batch[i].summary, batch[i].groupId, batch[i].email);
+  }
+  const sql = `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id) VALUES ${placeholders.map((p) => `(${p})`).join(", ")} ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`;
+  await db.query(sql, values);
+}
+
+export async function parseMbox(filePath: string, db: pg.Pool | pg.PoolClient): Promise<ImportResult> {
   const seen = new Set<string>();
   let contacts = 0;
   let interactions = 0;
+  let batch: PendingInteraction[] = [];
 
   const ownerEmail = process.env.OWNER_EMAIL?.toLowerCase();
 
@@ -100,20 +124,26 @@ export async function parseMbox(filePath: string, db: pg.Pool): Promise<ImportRe
           contacts++;
         }
 
-        await db.query(
-          `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
-           SELECT c.id, 'email', $1, $2, $3, $4
-           FROM contacts c WHERE c.email = $5
-           LIMIT 1
-           ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`,
-          [emailDate, rawContent, subject, groupId, participant.address]
-        );
+        batch.push({
+          date: emailDate,
+          rawContent,
+          summary: subject,
+          groupId,
+          email: participant.address,
+        });
         interactions++;
+
+        if (batch.length >= BATCH_SIZE) {
+          await flushInteractions(db, batch);
+          batch = [];
+        }
       }
     } catch {
       // Skip malformed messages
     }
   }
+
+  await flushInteractions(db, batch);
 
   return { contacts, interactions };
 }

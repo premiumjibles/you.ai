@@ -13,6 +13,7 @@ import {
   fetchRssFeeds,
   fetchNetworkActivity,
 } from "../tools/index.js";
+import { getConfig, upsertSetting } from "./config.js";
 
 const anthropic = new Anthropic();
 
@@ -41,6 +42,7 @@ const SYSTEM_PROMPT = `You are the user's personal network and briefing assistan
 - Stock/commodity prices → financial_tracker
 - Blog/feed updates → rss_feed
 - Recent network interactions → network_activity
+- Briefing schedule / delivery time / timezone → briefing_schedule
 </tool-routing>
 
 <ad-hoc-vs-recurring>
@@ -53,7 +55,17 @@ If the intent is ambiguous, fetch the data first, then ask if they want it added
 - When contact_search returns multiple matches, present them to the user and ask which one they meant before calling interaction_history or mutual_connections.
 - When outreach_draft returns drafts, present each one and ask if the user wants to edit, approve, or discard.
 - When deactivating a sub-agent, list current topics first to find the matching ID unless the user provides it directly.
-</disambiguation>`;
+</disambiguation>
+
+<briefing-setup>
+Before answering any briefing or digest question, call briefing_schedule with action "get" to check current state.
+
+If briefing_time is not set, ask the user two things before proceeding:
+1. What time they want their daily briefing (store in 24h format, e.g. "07:00")
+2. Their city or region (resolve to an IANA timezone, e.g. "Singapore" → "Asia/Singapore", "London" → "Europe/London")
+
+Use IANA identifiers because the scheduler converts UTC to local time with them. If a location maps to multiple timezones (e.g. "Indiana", "Australia"), name the options and ask which one.
+</briefing-setup>`;
 
 const tools: Anthropic.Tool[] = [
   {
@@ -155,10 +167,23 @@ const tools: Anthropic.Tool[] = [
       required: ["query"],
     },
   },
+  {
+    name: "briefing_schedule",
+    description: "Get or set the daily briefing delivery time.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string", enum: ["get", "set"], description: "Whether to read or update the schedule" },
+        time: { type: "string", description: "Delivery time in 24h format e.g. '07:00' (required for set)" },
+        timezone: { type: "string", description: "IANA timezone e.g. 'Asia/Singapore' (required for first set)" },
+      },
+      required: ["action"],
+    },
+  },
   ...dataTools,
 ];
 
-async function executeTool(db: pg.Pool, name: string, input: any): Promise<string> {
+export async function executeTool(db: pg.Pool, name: string, input: any): Promise<string> {
   switch (name) {
     case "contact_search": {
       const results = await searchContacts(db, {
@@ -201,14 +226,15 @@ async function executeTool(db: pg.Pool, name: string, input: any): Promise<strin
     case "sub_agent_management": {
       if (input.action === "list") {
         const { rows } = await db.query(
-          "SELECT id, name, type, config, schedule, active FROM sub_agents WHERE user_id = 'sean' AND active = true ORDER BY name"
+          "SELECT id, name, type, config, schedule, active FROM sub_agents WHERE user_id = $1 AND active = true ORDER BY name",
+          [process.env.USER_ID || "default"]
         );
         return rows.length === 0 ? "No active briefing topics." : JSON.stringify(rows);
       }
       if (input.action === "create") {
         const { rows } = await db.query(
-          `INSERT INTO sub_agents (user_id, type, name, config) VALUES ('sean', $1, $2, $3) RETURNING id, name, type`,
-          [input.type || "custom", input.name, JSON.stringify(input.config || {})]
+          `INSERT INTO sub_agents (user_id, type, name, config) VALUES ($1, $2, $3, $4) RETURNING id, name, type`,
+          [process.env.USER_ID || "default", input.type || "custom", input.name, JSON.stringify(input.config || {})]
         );
         return `Created topic: ${rows[0].name} (${rows[0].type})`;
       }
@@ -221,8 +247,8 @@ async function executeTool(db: pg.Pool, name: string, input: any): Promise<strin
 
     case "briefing_history": {
       const { rows } = await db.query(
-        "SELECT date::text, content FROM briefings WHERE user_id = 'sean' ORDER BY date DESC LIMIT $1",
-        [input.limit || 5]
+        "SELECT date::text, content FROM briefings WHERE user_id = $1 ORDER BY date DESC LIMIT $2",
+        [process.env.USER_ID || "default", input.limit || 5]
       );
       if (rows.length === 0) return "No briefings yet.";
       return JSON.stringify(rows);
@@ -293,6 +319,27 @@ async function executeTool(db: pg.Pool, name: string, input: any): Promise<strin
 
     case "network_activity":
       return await fetchNetworkActivity(db, input);
+
+    case "briefing_schedule": {
+      if (input.action === "get") {
+        const time = await getConfig(db, "briefing_time");
+        const tz = await getConfig(db, "timezone");
+        return JSON.stringify({
+          briefing_time: time || "not set",
+          timezone: tz || "not set",
+        });
+      }
+      if (input.action === "set") {
+        if (!input.time) return "Please provide a delivery time (e.g. '07:00').";
+        const existingTz = await getConfig(db, "timezone");
+        const tz = input.timezone || existingTz;
+        if (!tz) return "Please provide a timezone (e.g. 'Asia/Singapore') — none is stored yet.";
+        await upsertSetting(db, "briefing_time", input.time);
+        if (input.timezone) await upsertSetting(db, "timezone", input.timezone);
+        return `Briefing schedule set: ${input.time} (${tz})`;
+      }
+      return "Unknown action. Use 'get' or 'set'.";
+    }
 
     default:
       return "Unknown tool.";

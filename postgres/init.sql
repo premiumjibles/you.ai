@@ -47,7 +47,7 @@ CREATE TABLE interactions (
 -- Sub-agents
 CREATE TABLE sub_agents (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL DEFAULT 'sean',
+    user_id TEXT NOT NULL DEFAULT 'default',
     type TEXT NOT NULL,
     name TEXT NOT NULL,
     config JSONB DEFAULT '{}',
@@ -61,7 +61,7 @@ CREATE TABLE sub_agents (
 -- Briefings
 CREATE TABLE briefings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL DEFAULT 'sean',
+    user_id TEXT NOT NULL DEFAULT 'default',
     date DATE NOT NULL DEFAULT CURRENT_DATE,
     content TEXT NOT NULL,
     sub_agent_outputs JSONB,

@@ -348,9 +348,21 @@ show_welcome() {
   echo ""
 }
 
+collect_user_id() {
+  echo ""
+  ui_info "Step 1: Your Username"
+  echo "  A short slug to identify this instance (e.g., your first name)."
+  echo "  This scopes your data so it's portable. Lowercase, no spaces."
+  echo ""
+  local user_id
+  user_id=$(ui_input "Username (e.g., sean, dorjee)")
+  user_id=$(echo "${user_id:-default}" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+  USER_SLUG="$user_id"
+}
+
 collect_anthropic_key() {
   echo ""
-  ui_info "Step 1: Anthropic API Key"
+  ui_info "Step 2: Anthropic API Key"
   echo "  Get your key from: https://console.anthropic.com → API Keys"
   echo ""
   prompt_validated "Paste your Anthropic API key" "password" "validate_anthropic_key"
@@ -359,7 +371,7 @@ collect_anthropic_key() {
 
 collect_messaging_provider() {
   echo ""
-  ui_info "Step 2: Messaging Provider"
+  ui_info "Step 3: Messaging Provider"
   echo "  Choose how you'll chat with your AI assistant."
   echo ""
   MESSAGING_PROVIDER=$(ui_choose "Telegram (recommended)" "WhatsApp")
@@ -372,7 +384,7 @@ collect_messaging_provider() {
 
 collect_telegram() {
   echo ""
-  ui_info "Step 3: Telegram Bot Setup"
+  ui_info "Step 4: Telegram Bot Setup"
   echo ""
   echo "  To create a Telegram bot:"
   echo "  1. Open Telegram and search for @BotFather"
@@ -393,7 +405,7 @@ collect_telegram() {
 
 collect_whatsapp() {
   echo ""
-  ui_info "Step 3: WhatsApp Setup"
+  ui_info "Step 4: WhatsApp Setup"
   echo ""
   echo "  Enter your phone number in international format (no + or spaces)."
   echo "  Example: 61412345678 (Australia), 14155551234 (US)"
@@ -411,6 +423,7 @@ collect_whatsapp() {
 show_summary() {
   echo ""
   ui_info "Configuration Summary"
+  echo "  Username: $USER_SLUG"
   echo "  Anthropic API Key: ****${ANTHROPIC_KEY: -4}"
   echo "  Messaging: $MESSAGING_PROVIDER"
   if [ "$MESSAGING_PROVIDER" = "telegram" ]; then
@@ -442,6 +455,7 @@ write_env() {
   env_set "$ENV_TMP" "ALPHA_VANTAGE_API_KEY" ""
 
   # Core config
+  env_set "$ENV_TMP" "USER_ID" "$USER_SLUG"
   env_set "$ENV_TMP" "ANTHROPIC_API_KEY" "$ANTHROPIC_KEY"
   env_set "$ENV_TMP" "MESSAGING_PROVIDER" "$MESSAGING_PROVIDER"
 
@@ -597,6 +611,7 @@ show_whats_next() {
 # Collect config and write .env — no service launch. Used by both fresh_install and rerun_setup.
 collect_and_write_config() {
   show_welcome
+  collect_user_id
   collect_anthropic_key
   collect_messaging_provider
 
@@ -707,37 +722,6 @@ advanced_config() {
   fi
   echo ""
 
-  # Briefing schedule
-  ui_info "Briefing Schedule"
-  local current_cron
-  current_cron=$(env_get "$ENV_FILE" "BRIEFING_CRON")
-  current_cron="${current_cron:-0 7 * * *}"
-  echo "  When should your morning briefing run?"
-  echo "  Current: $current_cron"
-  echo ""
-  local hour schedule_default
-  case "$current_cron" in
-    "0 6 * * *") schedule_default="6:00 AM" ;;
-    "0 7 * * *") schedule_default="7:00 AM (default)" ;;
-    "0 8 * * *") schedule_default="8:00 AM" ;;
-    "0 9 * * *") schedule_default="9:00 AM" ;;
-    *)           schedule_default="Custom cron expression" ;;
-  esac
-  hour=$(ui_choose_default "$schedule_default" "6:00 AM" "7:00 AM (default)" "8:00 AM" "9:00 AM" "Custom cron expression" "Skip")
-  case "$hour" in
-    "6:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 6 * * *" ;;
-    "7:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 7 * * *" ;;
-    "8:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 8 * * *" ;;
-    "9:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 9 * * *" ;;
-    "Custom"*)
-      local cron_expr
-      cron_expr=$(ui_input "Cron expression (e.g., 0 7 * * *)")
-      if [ -n "$cron_expr" ]; then
-        env_set "$ENV_FILE" "BRIEFING_CRON" "$cron_expr"
-      fi
-      ;;
-    *) ;; # Skip
-  esac
   echo ""
 
   # Owner email
@@ -1177,12 +1161,11 @@ rerun_setup() {
 
   # Save advanced config values from existing .env
   # (write_env already preserves POSTGRES_PASSWORD and EVOLUTION_API_KEY)
-  local saved_openai saved_github saved_av saved_email saved_cron
+  local saved_openai saved_github saved_av saved_email
   saved_openai=$(env_get "$ENV_FILE" "OPENAI_API_KEY")
   saved_github=$(env_get "$ENV_FILE" "GITHUB_TOKEN")
   saved_av=$(env_get "$ENV_FILE" "ALPHA_VANTAGE_API_KEY")
   saved_email=$(env_get "$ENV_FILE" "OWNER_EMAIL")
-  saved_cron=$(env_get "$ENV_FILE" "BRIEFING_CRON")
 
   # Collect new core config and write .env (overwrites existing .env)
   if ! collect_and_write_config; then
@@ -1194,7 +1177,6 @@ rerun_setup() {
   [ -n "$saved_github" ] && env_set "$ENV_FILE" "GITHUB_TOKEN" "$saved_github"
   [ -n "$saved_av" ] && env_set "$ENV_FILE" "ALPHA_VANTAGE_API_KEY" "$saved_av"
   [ -n "$saved_email" ] && env_set "$ENV_FILE" "OWNER_EMAIL" "$saved_email"
-  [ -n "$saved_cron" ] && env_set "$ENV_FILE" "BRIEFING_CRON" "$saved_cron"
 
   if [ "$reset_db" = true ]; then
     echo ""

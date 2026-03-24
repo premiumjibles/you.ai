@@ -109,8 +109,6 @@ All routes are prefixed with `/api` except health.
 | `ALPHA_VANTAGE_API_KEY` | Alpha Vantage key (optional, alternative financial data for commodities/forex) |
 | `API_PORT` / `API_HOST` | API server bind address (default: `3000` / `0.0.0.0`) |
 | `BRIEFING_HISTORY_COUNT` | Number of past briefings included as context (default: `5`) |
-| `BRIEFING_CRON` | Cron expression for morning briefing (default: `0 7 * * *`) |
-| `ALERT_CRON` | Cron expression for urgent alert checks (default: `*/15 * * * *`) |
 
 ## Sub-Agent Types
 

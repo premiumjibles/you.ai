@@ -8,7 +8,7 @@ export function briefingsRouter(db: DB): Router {
 
   router.get("/history", async (req, res) => {
     try {
-      const userId = (req.query.user_id as string) || "sean";
+      const userId = (req.query.user_id as string) || process.env.USER_ID || "default";
       const date = req.query.date as string | undefined;
 
       if (date) {
@@ -33,7 +33,7 @@ export function briefingsRouter(db: DB): Router {
 
   router.post("/assemble", async (req, res) => {
     try {
-      const { user_id = "sean", sub_agent_outputs } = req.body;
+      const { user_id = process.env.USER_ID || "default", sub_agent_outputs } = req.body;
       const historyLimit = parseInt(process.env.BRIEFING_HISTORY_COUNT || "5");
       const { rows: history } = await db.query(
         "SELECT date::text, content FROM briefings WHERE user_id = $1 ORDER BY date DESC LIMIT $2",
@@ -52,7 +52,7 @@ export function briefingsRouter(db: DB): Router {
 
   router.post("/store", async (req, res) => {
     try {
-      const { user_id = "sean", content, sub_agent_outputs } = req.body;
+      const { user_id = process.env.USER_ID || "default", content, sub_agent_outputs } = req.body;
       const { rows } = await db.query(
         "INSERT INTO briefings (user_id, content, sub_agent_outputs) VALUES ($1, $2, $3) RETURNING *",
         [user_id, content, JSON.stringify(sub_agent_outputs)]
