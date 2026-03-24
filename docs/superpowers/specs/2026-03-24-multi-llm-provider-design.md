@@ -194,6 +194,69 @@ Similarly, assistant messages containing tool_use blocks must be translated:
 - `updateContactEmbedding()`: replace the `if (!process.env.OPENAI_API_KEY) return;` guard with a null check on the `embed()` return value (providers return `null` when embeddings are unavailable)
 - `batchUpdateEmbeddings()`: no changes needed (calls `updateContactEmbedding` which handles the null case)
 
+### `setup.sh`
+
+The interactive setup wizard (uses `gum` for TUI) currently hardcodes Anthropic as the only LLM provider. The following changes integrate provider selection into the wizard flow.
+
+**New step: LLM provider selection.** Insert before the current API key collection (Step 1). This becomes the new Step 1, and Anthropic key collection shifts to Step 2.
+
+```bash
+collect_llm_provider() {
+  echo ""
+  ui_info "Step 1: AI Provider"
+  echo "  Choose which AI provider powers your assistant."
+  echo ""
+  LLM_PROVIDER_CHOICE=$(ui_choose "Anthropic (default)" "Venice")
+
+  case "$LLM_PROVIDER_CHOICE" in
+    "Anthropic"*) LLM_PROVIDER_CHOICE="anthropic" ;;
+    "Venice"*)    LLM_PROVIDER_CHOICE="venice" ;;
+  esac
+}
+```
+
+**Conditional API key collection.** Replace the current `collect_anthropic_key` with a provider-aware function:
+
+- If `anthropic`: prompt for `ANTHROPIC_API_KEY` with `sk-ant-*` validation (existing behavior)
+- If `venice`: prompt for `VENICE_API_KEY` with appropriate validation
+
+**New validation function:**
+
+```bash
+validate_venice_key() {
+  # Venice API keys are non-empty strings; adjust if Venice has a known prefix
+  [ -n "$1" ]
+}
+```
+
+**Update `show_welcome`:** Change "You'll need: An Anthropic API key" to "You'll need: An API key for your AI provider (Anthropic or Venice)".
+
+**Update `show_summary`:** Add a line showing the selected LLM provider.
+
+**Update `write_env`:**
+
+- Set `LLM_PROVIDER` to the selected provider
+- Set the appropriate API key (`ANTHROPIC_API_KEY` or `VENICE_API_KEY`) based on selection
+- When Venice is selected, `OPENAI_API_KEY` is no longer needed for embeddings (Venice handles both)
+
+**Update `collect_and_write_config` flow:**
+
+```
+show_welcome
+collect_llm_provider          ← NEW
+collect_api_key               ← RENAMED, conditional on provider
+collect_messaging_provider
+collect_telegram / collect_whatsapp
+show_summary
+write_env
+```
+
+**Update `advanced_config`:** Add LLM provider switching as an option. When switching providers, prompt for the new provider's API key.
+
+**Update `rerun_setup`:** Preserve `LLM_PROVIDER` and `VENICE_API_KEY` alongside other advanced config values during re-run.
+
+**Update `SETUP-GUIDE.md`:** Change prerequisites from "Anthropic API key" to "An API key for your AI provider" and note that the wizard supports both Anthropic and Venice.
+
 ### `.env.example`
 
 Add:
