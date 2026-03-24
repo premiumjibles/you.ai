@@ -404,7 +404,30 @@ write_env() {
   mv "$ENV_TMP" "$ENV_FILE"
 }
 
+# Find an available port starting from a given port
+find_available_port() {
+  local port="$1"
+  while lsof -i :"$port" >/dev/null 2>&1 || ss -tln 2>/dev/null | grep -q ":${port} " 2>/dev/null; do
+    port=$((port + 1))
+  done
+  echo "$port"
+}
+
 start_services() {
+  # Check if the configured API port is available, find next if not
+  local api_port
+  api_port=$(env_get "$ENV_FILE" "API_PORT")
+  api_port="${api_port:-3000}"
+
+  local available_port
+  available_port=$(find_available_port "$api_port")
+
+  if [ "$available_port" != "$api_port" ]; then
+    ui_info "Port $api_port is in use, using port $available_port instead."
+    env_set "$ENV_FILE" "API_PORT" "$available_port"
+    api_port="$available_port"
+  fi
+
   local compose_cmd=(docker compose up -d)
   local compose_hint="docker compose up -d"
   if [ "$MESSAGING_PROVIDER" = "whatsapp" ]; then
@@ -431,6 +454,9 @@ start_services() {
 wait_for_services() {
   local timeout=60
   local elapsed=0
+  local api_port
+  api_port=$(env_get "$ENV_FILE" "API_PORT")
+  api_port="${api_port:-3000}"
 
   # Postgres
   echo -n "  Waiting for Postgres..."
@@ -449,7 +475,7 @@ wait_for_services() {
   # API
   elapsed=0
   echo -n "  Waiting for API..."
-  while ! curl -sf http://localhost:3000/health > /dev/null 2>&1; do
+  while ! curl -sf "http://localhost:${api_port}/health" > /dev/null 2>&1; do
     sleep 2
     elapsed=$((elapsed + 2))
     if [ $elapsed -ge $timeout ]; then
@@ -459,7 +485,7 @@ wait_for_services() {
       return 1
     fi
   done
-  ui_success "API ready (http://localhost:3000)"
+  ui_success "API ready (http://localhost:${api_port})"
 
   # Evolution API (WhatsApp only)
   if [ "${MESSAGING_PROVIDER:-telegram}" = "whatsapp" ]; then
