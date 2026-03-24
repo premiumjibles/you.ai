@@ -5,7 +5,7 @@ Step-by-step deployment guide based on real deployment experience. Covers a fres
 ## Prerequisites
 
 Before you start, have these ready:
-- **Anthropic API key** — [console.anthropic.com](https://console.anthropic.com) → API Keys (required, pay-per-use)
+- **Anthropic API key** — you'll get this during setup (from [console.anthropic.com](https://console.anthropic.com))
 - A VPS with SSH access (tested on Hetzner, Debian/Ubuntu)
 
 ## Step 1: Install Docker
@@ -51,44 +51,35 @@ cd you.ai
 ./setup.sh
 ```
 
-First run generates `.env` with random secrets for Postgres, Evolution API, etc. You'll see:
+The interactive wizard will guide you through:
+1. Entering your Anthropic API key
+2. Choosing a messaging provider (Telegram or WhatsApp)
+3. Configuring your messaging credentials
 
-```
-Created .env with auto-generated secrets.
+The wizard walks you through obtaining each credential — no prior setup needed.
 
-You still need to add your Anthropic API key:
-  nano .env  →  set ANTHROPIC_API_KEY=sk-ant-...
-
-Then re-run: ./setup.sh
-```
-
-## Step 4: Add your Anthropic key
+After configuration, services start automatically. You can start them manually next time with:
 
 ```bash
-nano .env
+docker compose up -d
+# or for WhatsApp:
+docker compose --profile whatsapp up -d
 ```
 
-Find the line `ANTHROPIC_API_KEY=sk-ant-xxx` and replace with your actual key. Save and exit (`Ctrl+X`, `Y`, `Enter`).
+### Optional integrations
 
-## Step 5: Start services
+After initial setup, run `./setup.sh` again to configure optional integrations:
+- **OpenAI** — semantic contact search
+- **Tavily** — web search in briefings and chat
+- **GitHub** — activity tracking in briefings
+- **Alpha Vantage** — commodities and forex data
+- **Briefing schedule** — customize when your morning briefing runs
 
-```bash
-./setup.sh
-```
-
-This starts 3 containers (Postgres, API, Evolution API), waits for health checks, and prints URLs when ready.
-
-**Note:** Evolution API takes 1-2 minutes on first start (runs database migrations). If the setup script seems stuck on "Waiting for Evolution API...", give it time. Check progress with:
-
-```bash
-docker compose logs evolution-api --tail 20
-```
-
-## Step 6: Connect WhatsApp
+## Step 4: Connect WhatsApp
 
 All commands below run on the server. The API key variable is read from your `.env` automatically.
 
-### 6a. Create a WhatsApp instance
+### 4a. Create a WhatsApp instance
 
 ```bash
 APIKEY=$(grep EVOLUTION_API_KEY .env | cut -d= -f2)
@@ -103,7 +94,7 @@ curl -s -X POST http://localhost:8080/instance/create \
 
 You should see a response with `"status": "connecting"`.
 
-### 6b. Get the QR code
+### 4b. Get the QR code
 
 ```bash
 # Wait a few seconds for the instance to initialize, then:
@@ -116,7 +107,7 @@ The response should contain a `base64` field with the QR image and/or a `code` f
 
 **If you get `{"count": 0}`:** The instance may need more time to connect to WhatsApp servers. Wait 10 seconds and retry. Check `docker compose logs evolution-api --tail 20` for errors.
 
-### 6c. Scan the QR code
+### 4c. Scan the QR code
 
 **Option A — Browser (easiest):** If the response has a `base64` field, copy the value and open this in your browser address bar:
 ```
@@ -137,7 +128,7 @@ curl -s http://localhost:8080/instance/connect/$INSTANCE \
 
 **Scan with your phone:** Open WhatsApp → Settings → Linked Devices → Link a Device → scan the QR code.
 
-### 6d. Verify connection
+### 4d. Verify connection
 
 ```bash
 curl -s http://localhost:8080/instance/connectionState/$INSTANCE \
@@ -146,7 +137,7 @@ curl -s http://localhost:8080/instance/connectionState/$INSTANCE \
 
 Expected: `"state": "open"`. Your `ownerJid` should show your phone number.
 
-### 6e. Set your owner JID
+### 4e. Set your owner JID
 
 Your JID is your phone number in the format: `<country-code><number>@s.whatsapp.net`
 (Example: Australian 0412 345 678 → `61412345678@s.whatsapp.net`)
@@ -169,7 +160,7 @@ sed -i "s/^WHATSAPP_OWNER_JID=.*/WHATSAPP_OWNER_JID=<your-jid-here>/" .env
 docker compose restart api
 ```
 
-## Step 7: Configure the webhook
+## Step 5: Configure the webhook
 
 Tell Evolution API to forward incoming WhatsApp messages to your API service:
 
@@ -200,7 +191,7 @@ curl -s http://localhost:8080/webhook/find/$INSTANCE \
   -H "apikey: $APIKEY" | python3 -m json.tool
 ```
 
-## Step 8: Test it
+## Step 6: Test it
 
 Send a WhatsApp message to the number you linked. The AI assistant should respond.
 
@@ -214,7 +205,7 @@ If no response, check the API logs:
 docker compose logs api --tail 20
 ```
 
-## Step 9: Import your data (optional)
+## Step 7: Import your data (optional)
 
 ### Gmail (Google Takeout)
 
@@ -285,7 +276,7 @@ docker compose exec postgres psql -U youai -c "CREATE DATABASE evolution;"
 ```
 
 ### QR code not showing / `count: 0` from connect endpoint
-Delete the instance and recreate it via CLI (see Step 6a-6b). The manager UI is unreliable for QR generation. If `connect` keeps returning `{"count": 0}`, check `docker compose logs evolution-api --tail 30` — the Baileys connection to WhatsApp servers may be failing. Verify outbound connectivity: `docker compose exec evolution-api sh -c "wget -q -O- --timeout=5 https://web.whatsapp.com > /dev/null && echo OK || echo BLOCKED"`.
+Delete the instance and recreate it via CLI (see Step 4a-4b). The manager UI is unreliable for QR generation. If `connect` keeps returning `{"count": 0}`, check `docker compose logs evolution-api --tail 30` — the Baileys connection to WhatsApp servers may be failing. Verify outbound connectivity: `docker compose exec evolution-api sh -c "wget -q -O- --timeout=5 https://web.whatsapp.com > /dev/null && echo OK || echo BLOCKED"`.
 
 ### Setup script stuck on "Waiting for Evolution API..."
 Check the logs: `docker compose logs evolution-api --tail 20`. First boot takes 1-2 minutes for database migrations.
