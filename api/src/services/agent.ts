@@ -284,7 +284,12 @@ export async function executeTool(db: pg.Pool, name: string, input: any): Promis
           [contact.id]
         );
         const draft = await draftOutreach(input.campaign_goal, contact, interactions);
-        drafts.push({ contact: { name: contact.name, company: contact.company }, draft: scrub(draft) });
+        const scrubbedDraft = scrub(draft);
+        await db.query(
+          `INSERT INTO outreach_drafts (contact_id, message, context) VALUES ($1, $2, $3)`,
+          [contact.id, scrubbedDraft, JSON.stringify({ campaign_goal: input.campaign_goal, query: input.query })]
+        );
+        drafts.push({ contact: { name: contact.name, company: contact.company }, draft: scrubbedDraft });
       }
       return JSON.stringify(drafts);
     }
