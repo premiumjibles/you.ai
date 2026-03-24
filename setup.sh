@@ -635,3 +635,75 @@ advanced_config() {
   echo ""
   ui_success "Advanced configuration complete!"
 }
+
+returning_user_menu() {
+  ui_header "You.ai Setup"
+  echo ""
+  echo "  Existing configuration detected."
+  echo ""
+
+  local choice
+  choice=$(ui_choose "Configure optional integrations" "Re-run initial setup" "Start services" "Exit")
+
+  case "$choice" in
+    "Configure"*)
+      advanced_config
+      ;;
+    "Re-run"*)
+      rerun_setup
+      ;;
+    "Start"*)
+      local provider
+      provider=$(env_get "$ENV_FILE" "MESSAGING_PROVIDER")
+      MESSAGING_PROVIDER="${provider:-telegram}"
+      start_services
+      wait_for_services
+      echo ""
+      ui_success "Services are running!"
+      ;;
+    *)
+      echo "Bye!"
+      exit 0
+      ;;
+  esac
+}
+
+rerun_setup() {
+  echo ""
+  ui_info "This will reconfigure your core settings (API key, messaging provider)."
+  echo "  Your optional integrations (OpenAI, Tavily, GitHub, etc.) will be preserved."
+  echo ""
+
+  if ! ui_confirm "Continue?"; then
+    echo "Cancelled."
+    return
+  fi
+
+  # Save advanced config values from existing .env
+  local saved_openai saved_tavily saved_github saved_av saved_email saved_cron
+  saved_openai=$(env_get "$ENV_FILE" "OPENAI_API_KEY")
+  saved_tavily=$(env_get "$ENV_FILE" "TAVILY_API_KEY")
+  saved_github=$(env_get "$ENV_FILE" "GITHUB_TOKEN")
+  saved_av=$(env_get "$ENV_FILE" "ALPHA_VANTAGE_API_KEY")
+  saved_email=$(env_get "$ENV_FILE" "OWNER_EMAIL")
+  saved_cron=$(env_get "$ENV_FILE" "BRIEFING_CRON")
+
+  # Remove existing .env so collect_and_write_config treats it as new
+  rm -f "$ENV_FILE"
+
+  # Collect new core config and write .env (no service launch yet)
+  collect_and_write_config
+
+  # Restore saved advanced config BEFORE starting services
+  [ -n "$saved_openai" ] && env_set "$ENV_FILE" "OPENAI_API_KEY" "$saved_openai"
+  [ -n "$saved_tavily" ] && env_set "$ENV_FILE" "TAVILY_API_KEY" "$saved_tavily"
+  [ -n "$saved_github" ] && env_set "$ENV_FILE" "GITHUB_TOKEN" "$saved_github"
+  [ -n "$saved_av" ] && env_set "$ENV_FILE" "ALPHA_VANTAGE_API_KEY" "$saved_av"
+  [ -n "$saved_email" ] && env_set "$ENV_FILE" "OWNER_EMAIL" "$saved_email"
+  [ -n "$saved_cron" ] && env_set "$ENV_FILE" "BRIEFING_CRON" "$saved_cron"
+
+  # Now start services with full config applied
+  start_services
+  wait_for_services
+  show_whats_next
+}
