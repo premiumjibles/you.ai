@@ -34,21 +34,21 @@ install_gum() {
   case "$arch" in
     x86_64)  arch="amd64" ;;
     aarch64|arm64) arch="arm64" ;;
-    *) echo "Unsupported architecture: $arch"; return 1 ;;
+    *) echo "Unsupported architecture: $arch — falling back to basic prompts."; return 0 ;;
   esac
 
   local gum_os
   case "$os" in
     darwin) gum_os="Darwin" ;;
     linux)  gum_os="Linux" ;;
-    *) echo "Unsupported OS: $os"; return 1 ;;
+    *) echo "Unsupported OS: $os — falling back to basic prompts."; return 0 ;;
   esac
 
   local url="https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/gum_${GUM_VERSION}_${gum_os}_${arch}.tar.gz"
 
   mkdir -p "$GUM_DIR"
   echo "Downloading setup tools..."
-  if curl -fsSL "$url" | tar xz -C "$GUM_DIR" --strip-components=1 2>/dev/null; then
+  if curl -fsSL --connect-timeout 10 --max-time 30 "$url" | tar xz -C "$GUM_DIR" --strip-components=1 2>/dev/null; then
     chmod +x "$GUM_DIR/gum"
     GUM_BIN="$GUM_DIR/gum"
   else
@@ -97,8 +97,10 @@ ui_choose() {
     "$GUM_BIN" choose "$@"
   else
     select opt in "$@"; do
-      echo "$opt"
-      break
+      if [ -n "$opt" ]; then
+        echo "$opt"
+        break
+      fi
     done
   fi
 }
@@ -173,7 +175,7 @@ env_set() {
   local file="$1" key="$2" value="$3"
   # Escape sed replacement special chars: & \ | /
   local escaped_value
-  escaped_value=$(printf '%s\n' "$value" | sed 's/[&\|/\\]/\\&/g')
+  escaped_value=$(printf '%s\n' "$value" | sed 's/[&|\\]/\\&/g')
 
   if grep -q "^${key}=" "$file" 2>/dev/null; then
     sedi "s|^${key}=.*|${key}=${escaped_value}|" "$file"
@@ -193,7 +195,7 @@ env_get() {
 # Uncomment all commented key=value lines (^# KEY=) but leave plain comments alone
 env_uncomment_keys() {
   local file="$1"
-  sedi 's/^# \([A-Z_]\{1,\}=\)/\1/' "$file"
+  sedi 's/^# *\([A-Z_]\{1,\}=\)/\1/' "$file"
 }
 
 # ---------------------------------------------------------------------------
@@ -206,7 +208,7 @@ check_prerequisites() {
     echo "  Install: https://docs.docker.com/get-docker/"
     exit 1
   }
-  command -v docker compose >/dev/null 2>&1 || {
+  docker compose version >/dev/null 2>&1 || {
     ui_error "Docker Compose is required but not installed."
     exit 1
   }
