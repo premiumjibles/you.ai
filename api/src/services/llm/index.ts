@@ -6,6 +6,7 @@ import type {
   ChatWithToolsParams,
   ChatResponse,
 } from "./types.js";
+import { AnthropicProvider } from "./anthropic.js";
 
 export type { LLMProvider } from "./provider.js";
 export type {
@@ -20,13 +21,6 @@ export type {
 export { resolveModel } from "./models.js";
 
 // Stub providers — replaced in Tasks 3 & 4
-class StubAnthropicProvider implements LLMProvider {
-  name = "anthropic" as const;
-  async chat(_p: ChatParams): Promise<ChatResponse> { throw new Error("Not implemented"); }
-  async chatWithTools(_p: ChatWithToolsParams): Promise<ChatResponse> { throw new Error("Not implemented"); }
-  async embed(_t: string): Promise<number[] | null> { return null; }
-}
-
 class StubVeniceProvider implements LLMProvider {
   name = "venice" as const;
   async chat(_p: ChatParams): Promise<ChatResponse> { throw new Error("Not implemented"); }
@@ -38,7 +32,7 @@ export function getProvider(): LLMProvider {
   const name = process.env.LLM_PROVIDER || "anthropic";
   switch (name) {
     case "anthropic":
-      return new StubAnthropicProvider();
+      return new AnthropicProvider();
     case "venice":
       return new StubVeniceProvider();
     default:
