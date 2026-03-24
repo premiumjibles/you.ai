@@ -48,12 +48,21 @@ export function githubRouter(db: DB): Router {
         headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
       }
 
+      // Helper: fetch with token, retry without on 403 (org token policy)
+      async function ghFetch(url: string): Promise<Response> {
+        let res = await fetch(url, { headers });
+        if (res.status === 403 && headers.Authorization) {
+          const { Authorization: _, ...noAuth } = headers;
+          res = await fetch(url, { headers: noAuth });
+        }
+        return res;
+      }
+
       const commits: { message: string; author: string }[] = [];
       const prs: { number: number; title: string; author: string }[] = [];
 
-      const commitsRes = await fetch(
-        `https://api.github.com/repos/${encodeURI(repo)}/commits?since=${since}&per_page=10`,
-        { headers }
+      const commitsRes = await ghFetch(
+        `https://api.github.com/repos/${encodeURI(repo)}/commits?since=${since}&per_page=10`
       );
       if (commitsRes.ok) {
         const data = await commitsRes.json();
@@ -65,9 +74,8 @@ export function githubRouter(db: DB): Router {
         }
       }
 
-      const prsRes = await fetch(
-        `https://api.github.com/repos/${encodeURI(repo)}/pulls?state=closed&sort=updated&direction=desc&per_page=10`,
-        { headers }
+      const prsRes = await ghFetch(
+        `https://api.github.com/repos/${encodeURI(repo)}/pulls?state=closed&sort=updated&direction=desc&per_page=10`
       );
       if (prsRes.ok) {
         const data = (await prsRes.json()).filter(
