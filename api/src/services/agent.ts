@@ -14,6 +14,7 @@ import {
   fetchNetworkActivity,
 } from "../tools/index.js";
 import { getConfig, upsertSetting } from "./config.js";
+import { validateSubAgent, mergeSubAgentConfig } from "./sub-agent-validation.js";
 
 const anthropic = new Anthropic();
 
@@ -232,9 +233,22 @@ export async function executeTool(db: pg.Pool, name: string, input: any): Promis
         return rows.length === 0 ? "No active briefing topics." : JSON.stringify(rows);
       }
       if (input.action === "create") {
+        const type = input.type || "custom";
+        const config = input.config || {};
+
+        const userId = process.env.USER_ID || "default";
+        const validation = await validateSubAgent(db, type, config, userId);
+        if (!validation.ok) {
+          await mergeSubAgentConfig(db, validation.existingAgent.id, config, type);
+          const items = validation.overlappingItems.length > 0
+            ? validation.overlappingItems.join(", ")
+            : "this type";
+          return `${items} is already tracked by "${validation.existingAgent.name}". I've added the new items to that existing topic.`;
+        }
+
         const { rows } = await db.query(
           `INSERT INTO sub_agents (user_id, type, name, config) VALUES ($1, $2, $3, $4) RETURNING id, name, type`,
-          [process.env.USER_ID || "default", input.type || "custom", input.name, JSON.stringify(input.config || {})]
+          [userId, type, input.name, JSON.stringify(config)]
         );
         return `Created topic: ${rows[0].name} (${rows[0].type})`;
       }
