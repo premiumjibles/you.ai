@@ -10,6 +10,7 @@ import { chatRouter } from "./routes/chat.js";
 import { settingsRouter } from "./routes/settings.js";
 import { githubRouter } from "./routes/github.js";
 import pool from "./db/client.js";
+import { runMigrations } from "./db/migrate.js";
 import { startScheduler } from "./services/scheduler.js";
 import { createMessagingProvider } from "./services/messaging/index.js";
 import { processIncomingMessage } from "./services/messaging/handler.js";
@@ -41,6 +42,9 @@ app.get("*", (_req, res) => {
 });
 
 const port = parseInt(process.env.API_PORT || "3000");
+runMigrations(pool).catch((err) => {
+  console.error("Migration warning:", err.message);
+});
 app.listen(port, process.env.API_HOST || "0.0.0.0", () => {
   console.log(`API server listening on port ${port}`);
   console.log(`Messaging provider: ${provider.name}`);
