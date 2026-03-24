@@ -21,10 +21,9 @@ export async function fetchFinancialData(params: {
   symbols: string[];
 }): Promise<string> {
   const symbols = params.symbols;
-  const lines: string[] = [];
 
-  for (const symbol of symbols) {
-    try {
+  const results = await Promise.allSettled(
+    symbols.map(async (symbol) => {
       const res = await fetch(
         `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
         { headers: { "User-Agent": "Mozilla/5.0" } }
@@ -38,11 +37,17 @@ export async function fetchFinancialData(params: {
       const changePercent = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
       const sign = changePercent >= 0 ? "+" : "";
       const name = meta.longName || meta.shortName || symbol;
-      lines.push(
-        `${name} (${symbol}): $${price.toLocaleString()} (${sign}${changePercent.toFixed(1)}%)`
-      );
-    } catch (err: any) {
-      console.warn(`financial_tracker: failed to fetch ${symbol}: ${err.message}`);
+      return `${name} (${symbol}): $${price.toLocaleString()} (${sign}${changePercent.toFixed(1)}%)`;
+    })
+  );
+
+  const lines = results
+    .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+    .map((r) => r.value);
+
+  for (const r of results) {
+    if (r.status === "rejected") {
+      console.warn(`financial_tracker: ${r.reason?.message || r.reason}`);
     }
   }
 
