@@ -1100,10 +1100,36 @@ returning_user_menu() {
   echo "  Existing configuration detected."
   echo ""
 
+  # Detect if services are already running
+  local services_running=false
+  if docker compose ps --status running --quiet 2>/dev/null | grep -q .; then
+    services_running=true
+  fi
+
+  local start_label="Start services"
+  if [ "$services_running" = true ]; then
+    start_label="Restart services"
+  fi
+
+  local menu_items=("$start_label" "Import your data" "Configure optional integrations" "Re-run initial setup")
+  if [ "$services_running" = true ]; then
+    menu_items+=("Stop services")
+  fi
+  menu_items+=("Exit")
+
   local choice
-  choice=$(ui_choose "Import your data" "Configure optional integrations" "Re-run initial setup" "Start services" "Exit")
+  choice=$(ui_choose "${menu_items[@]}")
 
   case "$choice" in
+    "Start services"|"Restart services")
+      local provider
+      provider=$(env_get "$ENV_FILE" "MESSAGING_PROVIDER")
+      MESSAGING_PROVIDER="${provider:-telegram}"
+      if start_services && wait_for_services; then
+        echo ""
+        ui_success "Services are running!"
+      fi
+      ;;
     "Import"*)
       import_data
       ;;
@@ -1113,14 +1139,12 @@ returning_user_menu() {
     "Re-run"*)
       rerun_setup
       ;;
-    "Start"*)
-      local provider
-      provider=$(env_get "$ENV_FILE" "MESSAGING_PROVIDER")
-      MESSAGING_PROVIDER="${provider:-telegram}"
-      if start_services && wait_for_services; then
-        echo ""
-        ui_success "Services are running!"
-      fi
+    "Stop services")
+      echo ""
+      ui_info "Stopping services..."
+      docker compose down
+      echo ""
+      ui_success "Services stopped."
       ;;
     *)
       echo "Bye!"
