@@ -105,6 +105,21 @@ ui_choose() {
   fi
 }
 
+ui_choose_default() {
+  local default_val="$1"
+  shift
+  if [ -n "$GUM_BIN" ]; then
+    "$GUM_BIN" choose --selected "$default_val" "$@"
+  else
+    select opt in "$@"; do
+      if [ -n "$opt" ]; then
+        echo "$opt"
+        break
+      fi
+    done
+  fi
+}
+
 ui_confirm() {
   if [ -n "$GUM_BIN" ]; then
     "$GUM_BIN" confirm "$1"
@@ -133,6 +148,16 @@ ui_info() {
     "$GUM_BIN" style --foreground 39 "$1"
   else
     echo "$1"
+  fi
+}
+
+ui_info_configured() {
+  if [ -n "$GUM_BIN" ]; then
+    "$GUM_BIN" join --horizontal \
+      "$("$GUM_BIN" style --foreground 39 "$1  ")" \
+      "$("$GUM_BIN" style --foreground 76 "✓ configured")"
+  else
+    echo "$1  ✓ configured"
   fi
 }
 
@@ -379,6 +404,11 @@ write_env() {
   # Uncomment all commented key=value lines
   env_uncomment_keys "$ENV_TMP"
 
+  # Clear optional keys so they don't retain placeholder values from .env.example
+  env_set "$ENV_TMP" "OPENAI_API_KEY" ""
+  env_set "$ENV_TMP" "GITHUB_TOKEN" ""
+  env_set "$ENV_TMP" "ALPHA_VANTAGE_API_KEY" ""
+
   # Core config
   env_set "$ENV_TMP" "ANTHROPIC_API_KEY" "$ANTHROPIC_KEY"
   env_set "$ENV_TMP" "MESSAGING_PROVIDER" "$MESSAGING_PROVIDER"
@@ -578,12 +608,20 @@ advanced_config() {
   echo ""
 
   # OpenAI
-  ui_info "OpenAI API Key"
+  local existing_openai
+  existing_openai=$(env_get "$ENV_FILE" "OPENAI_API_KEY")
+  if [ -n "$existing_openai" ]; then
+    ui_info_configured "OpenAI API Key"
+  else
+    ui_info "OpenAI API Key"
+  fi
   echo "  Enables semantic search — find contacts by meaning, not just name matching."
   echo "  Get a key from: https://platform.openai.com/api-keys"
   echo ""
+  local openai_prompt="OpenAI API key (Enter to skip)"
+  [ -n "$existing_openai" ] && openai_prompt="OpenAI API key (Enter to keep current)"
   local openai_key
-  openai_key=$(prompt_validated "OpenAI API key (Enter to skip)" "password" "validate_openai_key" "skippable")
+  openai_key=$(prompt_validated "$openai_prompt" "password" "validate_openai_key" "skippable")
   if [ -n "$openai_key" ]; then
     env_set "$ENV_FILE" "OPENAI_API_KEY" "$openai_key"
     ui_success "OpenAI API key saved"
@@ -591,12 +629,20 @@ advanced_config() {
   echo ""
 
   # GitHub
-  ui_info "GitHub Token"
+  local existing_github
+  existing_github=$(env_get "$ENV_FILE" "GITHUB_TOKEN")
+  if [ -n "$existing_github" ]; then
+    ui_info_configured "GitHub Token"
+  else
+    ui_info "GitHub Token"
+  fi
   echo "  Enables GitHub activity tracking in your morning briefings."
   echo "  Create a token at: https://github.com/settings/tokens"
   echo ""
+  local github_prompt="GitHub token (Enter to skip)"
+  [ -n "$existing_github" ] && github_prompt="GitHub token (Enter to keep current)"
   local github_token
-  github_token=$(prompt_validated "GitHub token (Enter to skip)" "password" "validate_github_token" "skippable")
+  github_token=$(prompt_validated "$github_prompt" "password" "validate_github_token" "skippable")
   if [ -n "$github_token" ]; then
     env_set "$ENV_FILE" "GITHUB_TOKEN" "$github_token"
     ui_success "GitHub token saved"
@@ -604,12 +650,20 @@ advanced_config() {
   echo ""
 
   # Alpha Vantage
-  ui_info "Alpha Vantage API Key"
+  local existing_av
+  existing_av=$(env_get "$ENV_FILE" "ALPHA_VANTAGE_API_KEY")
+  if [ -n "$existing_av" ]; then
+    ui_info_configured "Alpha Vantage API Key"
+  else
+    ui_info "Alpha Vantage API Key"
+  fi
   echo "  Enables commodities and forex data in briefings."
   echo "  Get a free key from: https://www.alphavantage.co/support/#api-key"
   echo ""
+  local av_prompt="Alpha Vantage API key (Enter to skip)"
+  [ -n "$existing_av" ] && av_prompt="Alpha Vantage API key (Enter to keep current)"
   local av_key
-  av_key=$(ui_input "Alpha Vantage API key (Enter to skip)")
+  av_key=$(ui_input "$av_prompt")
   if [ -n "$av_key" ]; then
     env_set "$ENV_FILE" "ALPHA_VANTAGE_API_KEY" "$av_key"
     ui_success "Alpha Vantage API key saved"
@@ -624,8 +678,15 @@ advanced_config() {
   echo "  When should your morning briefing run?"
   echo "  Current: $current_cron"
   echo ""
-  local hour
-  hour=$(ui_choose "6:00 AM" "7:00 AM (default)" "8:00 AM" "9:00 AM" "Custom cron expression" "Skip")
+  local hour schedule_default
+  case "$current_cron" in
+    "0 6 * * *") schedule_default="6:00 AM" ;;
+    "0 7 * * *") schedule_default="7:00 AM (default)" ;;
+    "0 8 * * *") schedule_default="8:00 AM" ;;
+    "0 9 * * *") schedule_default="9:00 AM" ;;
+    *)           schedule_default="Custom cron expression" ;;
+  esac
+  hour=$(ui_choose_default "$schedule_default" "6:00 AM" "7:00 AM (default)" "8:00 AM" "9:00 AM" "Custom cron expression" "Skip")
   case "$hour" in
     "6:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 6 * * *" ;;
     "7:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 7 * * *" ;;
@@ -643,11 +704,20 @@ advanced_config() {
   echo ""
 
   # Owner email
-  ui_info "Owner Email"
+  local existing_email
+  existing_email=$(env_get "$ENV_FILE" "OWNER_EMAIL")
+  if [ -n "$existing_email" ]; then
+    ui_info_configured "Owner Email"
+    echo "  Current: $existing_email"
+  else
+    ui_info "Owner Email"
+  fi
   echo "  Your email — used to filter yourself out of contact imports."
   echo ""
+  local email_prompt="Email address (Enter to skip)"
+  [ -n "$existing_email" ] && email_prompt="Email address (Enter to keep current)"
   local owner_email
-  owner_email=$(prompt_validated "Email address (Enter to skip)" "text" "validate_email" "skippable")
+  owner_email=$(prompt_validated "$email_prompt" "text" "validate_email" "skippable")
   if [ -n "$owner_email" ]; then
     env_set "$ENV_FILE" "OWNER_EMAIL" "$owner_email"
     ui_success "Owner email saved"
