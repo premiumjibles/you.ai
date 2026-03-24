@@ -335,8 +335,8 @@ collect_telegram() {
 
   echo ""
   echo "  To find your Telegram user ID:"
-  echo "  1. Search for @userinfobot on Telegram"
-  echo "  2. Send /start — it will reply with your numeric ID"
+  echo "  1. Search for @idbot on Telegram"
+  echo "  2. Send /getid — it will reply with your numeric ID"
   echo ""
   TELEGRAM_OWNER_ID=$(prompt_validated "Enter your Telegram user ID" "text" "validate_telegram_owner_id")
 }
