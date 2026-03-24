@@ -351,15 +351,27 @@ export async function handleChatMessage(
   sessionId: string,
   userMessage: string
 ): Promise<string> {
+  // Load most recent 50 messages, then re-order chronologically
   const { rows: history } = await db.query(
-    "SELECT role, content FROM (SELECT role, content, created_at FROM chat_messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT 20) sub ORDER BY created_at ASC",
+    `SELECT role, content, tool_use FROM (
+      SELECT role, content, tool_use, created_at
+      FROM chat_messages WHERE session_id = $1
+      ORDER BY created_at DESC LIMIT 50
+    ) sub ORDER BY created_at ASC`,
     [sessionId]
   );
 
-  const messages: Anthropic.MessageParam[] = history.map((row) => ({
-    role: row.role as "user" | "assistant",
-    content: row.content,
-  }));
+  // Reconstruct message history — use structured content (tool_use) when available
+  const messages: Anthropic.MessageParam[] = [];
+  for (const row of history) {
+    const role = row.role as "user" | "assistant";
+    const content = row.tool_use ?? row.content;
+    messages.push({ role, content });
+  }
+  // Ensure history starts with a user message (API requirement)
+  while (messages.length > 0 && messages[0].role !== "user") {
+    messages.shift();
+  }
   messages.push({ role: "user", content: userMessage });
 
   let response = await anthropic.messages.create({
@@ -369,6 +381,11 @@ export async function handleChatMessage(
     tools,
     messages,
   });
+
+  // Track all messages from this turn for persistence
+  const newMessages: { role: string; content: string; tool_use: any }[] = [
+    { role: "user", content: userMessage, tool_use: null },
+  ];
 
   let iterations = 0;
   while (response.stop_reason === "tool_use" && iterations < 10) {
@@ -391,6 +408,22 @@ export async function handleChatMessage(
     messages.push({ role: "assistant", content: response.content });
     messages.push({ role: "user", content: toolResults });
 
+    // Persist intermediate messages so tool context survives across turns
+    const textContent = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n");
+    newMessages.push({
+      role: "assistant",
+      content: textContent || "(tool use)",
+      tool_use: response.content,
+    });
+    newMessages.push({
+      role: "user",
+      content: "(tool results)",
+      tool_use: toolResults,
+    });
+
     response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4096,
@@ -405,14 +438,19 @@ export async function handleChatMessage(
   );
   const assistantMessage = textBlocks.map((b) => b.text).join("\n") || "I couldn't generate a response.";
 
-  await db.query(
-    "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, 'user', $2)",
-    [sessionId, userMessage]
-  );
-  await db.query(
-    "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, 'assistant', $2)",
-    [sessionId, assistantMessage]
-  );
+  newMessages.push({
+    role: "assistant",
+    content: assistantMessage,
+    tool_use: null,
+  });
+
+  // Persist all messages from this turn (user, intermediate tool exchanges, final response)
+  for (const msg of newMessages) {
+    await db.query(
+      "INSERT INTO chat_messages (session_id, role, content, tool_use) VALUES ($1, $2, $3, $4)",
+      [sessionId, msg.role, msg.content, msg.tool_use ? JSON.stringify(msg.tool_use) : null]
+    );
+  }
 
   return assistantMessage;
 }
