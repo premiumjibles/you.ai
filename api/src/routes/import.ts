@@ -6,6 +6,7 @@ import type { DB } from "../db/client.js";
 import { parseMbox } from "../services/mbox-parser.js";
 import { parseIcs } from "../services/ics-parser.js";
 import { parseContactsCsv } from "../services/csv-parser.js";
+import { parseLinkedInMessages } from "../services/linkedin-messages-parser.js";
 import { upsertContact } from "../services/ingestion.js";
 
 const upload = multer({ dest: "/tmp/uploads", limits: { fileSize: 500 * 1024 * 1024 } });
@@ -48,15 +49,19 @@ export function importRouter(db: DB): Router {
         const result = await upsertContact(db, { ...c, source });
         results.push(result);
 
-        if (c.connected_on && c.email) {
-          await db.query(
-            `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
-             SELECT c.id, 'linkedin', $1, $2, $3, $4
-             FROM contacts c WHERE c.email = $5
-             LIMIT 1
-             ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`,
-            [c.connected_on, "LinkedIn connection", "LinkedIn connection", `linkedin-connect-${c.email}`, c.email]
-          );
+        if (c.connected_on) {
+          const lookupField = c.email ? "email" : c.linkedin_url ? "linkedin_url" : null;
+          const lookupValue = c.email || c.linkedin_url;
+          if (lookupField && lookupValue) {
+            await db.query(
+              `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
+               SELECT c.id, 'linkedin', $1, $2, $3, $4
+               FROM contacts c WHERE c.${lookupField} = $5
+               LIMIT 1
+               ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`,
+              [c.connected_on, "LinkedIn connection", "LinkedIn connection", `linkedin-connect-${lookupValue}`, lookupValue]
+            );
+          }
         }
       }
       res.json({
@@ -64,6 +69,18 @@ export function importRouter(db: DB): Router {
         created: results.filter((r) => r.action === "created").length,
         merged: results.filter((r) => r.action === "merged").length,
       });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    } finally {
+      if (req.file) unlink(req.file.path).catch(() => {});
+    }
+  });
+
+  router.post("/linkedin-messages", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const result = await parseLinkedInMessages(req.file.path, db);
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     } finally {

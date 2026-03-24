@@ -2,7 +2,7 @@ import type pg from "pg";
 
 export async function findDuplicate(
   db: pg.Pool,
-  input: { name: string; email?: string | null; phone?: string | null; company?: string | null }
+  input: { name: string; email?: string | null; phone?: string | null; company?: string | null; linkedin_url?: string | null }
 ): Promise<any | null> {
   // 1. Email match (highest confidence)
   if (input.email) {
@@ -13,7 +13,16 @@ export async function findDuplicate(
     if (rows[0]) return rows[0];
   }
 
-  // 2. Phone match
+  // 2. LinkedIn URL match
+  if (input.linkedin_url) {
+    const { rows } = await db.query(
+      "SELECT * FROM contacts WHERE linkedin_url = $1 LIMIT 1",
+      [input.linkedin_url]
+    );
+    if (rows[0]) return rows[0];
+  }
+
+  // 3. Phone match
   if (input.phone) {
     const { rows } = await db.query(
       "SELECT * FROM contacts WHERE phone = $1 LIMIT 1",

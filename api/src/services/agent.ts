@@ -18,7 +18,9 @@ If the user wants to add or manage briefing topics, use the sub-agent management
 
 You can search the web for current information using the web_search tool. Use it when the user asks about recent events, news, weather, or anything time-sensitive.
 
-When the user asks who knows someone, about mutual connections, or connective questions like "do I know anyone who also knows X", first search for the contact, then use the mutual_connections tool with their contact ID.`;
+When the user asks who knows someone, about mutual connections, or connective questions like "do I know anyone who also knows X", first search for the contact, then use the mutual_connections tool with their contact ID.
+
+When using interaction_history or mutual_connections, always call contact_search first and use the exact "id" field from the search results. Never fabricate or guess a UUID.`;
 
 const tools: Anthropic.Tool[] = [
   {
@@ -34,11 +36,11 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "interaction_history",
-    description: "Get recent interactions (emails, meetings, messages) with a specific contact.",
+    description: "Get recent interactions (emails, meetings, messages) with a specific contact. Always call contact_search first to obtain the contact's id — never guess or fabricate a UUID.",
     input_schema: {
       type: "object" as const,
       properties: {
-        contact_id: { type: "string", description: "The contact's UUID" },
+        contact_id: { type: "string", description: "The contact's UUID from a previous contact_search result (e.g. '3f2504e0-4f89-11d3-9a0c-0305e82c3301'). Must be a real UUID returned by contact_search." },
       },
       required: ["contact_id"],
     },
@@ -86,7 +88,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        contact_id: { type: "string", description: "The contact's UUID to find mutual connections for" },
+        contact_id: { type: "string", description: "The contact's UUID from a previous contact_search result. Must be a real UUID returned by contact_search." },
       },
       required: ["contact_id"],
     },

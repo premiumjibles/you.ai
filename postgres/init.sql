@@ -84,6 +84,7 @@ CREATE INDEX idx_contacts_full_tsvector ON contacts USING gin (full_tsvector);
 CREATE INDEX idx_contacts_embedding ON contacts USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX idx_contacts_email ON contacts (email) WHERE email IS NOT NULL;
 CREATE INDEX idx_contacts_phone ON contacts (phone) WHERE phone IS NOT NULL;
+CREATE INDEX idx_contacts_linkedin_url ON contacts (linkedin_url) WHERE linkedin_url IS NOT NULL;
 CREATE INDEX idx_interactions_contact_id ON interactions (contact_id);
 CREATE INDEX idx_interactions_date ON interactions (date DESC);
 CREATE INDEX idx_interactions_group_id ON interactions (group_id) WHERE group_id IS NOT NULL;

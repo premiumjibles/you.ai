@@ -47,7 +47,7 @@ export function parseContactsCsv(csvText: string): ParsedContact[] {
       company: r["Company"] || r["company"] || r["Organization"] || null,
       role: r["Position"] || r["role"] || r["Title"] || r["Job Title"] || null,
       location: r["Location"] || r["location"] || r["City"] || null,
-      linkedin_url: r["Profile URL"] || r["linkedin_url"] || null,
+      linkedin_url: r["Profile URL"] || r["URL"] || r["linkedin_url"] || null,
       notes: r["Notes"] || r["notes"] || null,
       connected_on: parseLinkedInDate(r["Connected On"]),
     };
