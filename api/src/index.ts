@@ -21,7 +21,7 @@ app.get("/health", (_req, res) => {
 const provider = createMessagingProvider();
 
 app.use("/api/contacts", contactsRouter(pool));
-app.use("/api/briefings", briefingsRouter(pool));
+app.use("/api/briefings", briefingsRouter(pool, provider));
 app.use("/api/outreach", outreachRouter(pool));
 app.use("/api/interactions", interactionsRouter(pool));
 app.use("/api/sub-agents", subAgentsRouter(pool));

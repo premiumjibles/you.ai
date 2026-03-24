@@ -32,7 +32,7 @@ export function startScheduler(db: pg.Pool, provider: MessagingProvider): void {
   console.log(`Scheduler: urgent alerts cron set to "${alertCron}"`);
 }
 
-async function runMorningBriefing(
+export async function runMorningBriefing(
   db: pg.Pool,
   provider: MessagingProvider,
   ownerAddress: string
