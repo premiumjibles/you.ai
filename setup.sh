@@ -211,3 +211,76 @@ check_prerequisites() {
     exit 1
   }
 }
+
+# ---------------------------------------------------------------------------
+# Input validation functions
+# ---------------------------------------------------------------------------
+
+# Validation helpers — return 0 if valid, 1 if invalid
+
+validate_anthropic_key() {
+  [[ "$1" == sk-ant-* ]]
+}
+
+validate_telegram_token() {
+  # Format: digits:alphanumeric (e.g., 123456789:ABCdefGhIjKlMnOpQrStUvWxYz)
+  [[ "$1" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]]
+}
+
+validate_telegram_owner_id() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+validate_whatsapp_phone() {
+  [[ "$1" =~ ^[0-9]{7,}$ ]]
+}
+
+validate_openai_key() {
+  [[ "$1" == sk-* ]]
+}
+
+validate_tavily_key() {
+  [[ "$1" == tvly-* ]]
+}
+
+validate_github_token() {
+  [[ "$1" == ghp_* ]] || [[ "$1" == github_pat_* ]]
+}
+
+validate_email() {
+  [[ "$1" == *@* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Prompt with validation
+# ---------------------------------------------------------------------------
+
+# Prompt for input with validation. Loops until valid or user skips (if skippable).
+# Usage: prompt_validated "prompt text" "password|text" "validator_func" [skippable]
+# Returns the validated value via stdout.
+prompt_validated() {
+  local prompt="$1" input_type="$2" validator="$3" skippable="${4:-}"
+  local value
+
+  while true; do
+    value=$(ui_input "$prompt" "$input_type")
+
+    # Allow skip if marked as skippable and input is empty
+    if [ -n "$skippable" ] && [ -z "$value" ]; then
+      echo ""
+      return 0
+    fi
+
+    if [ -z "$value" ]; then
+      ui_error "This field is required."
+      continue
+    fi
+
+    if $validator "$value"; then
+      echo "$value"
+      return 0
+    else
+      ui_error "Invalid format. Please try again."
+    fi
+  done
+}
