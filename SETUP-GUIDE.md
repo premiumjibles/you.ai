@@ -52,9 +52,10 @@ cd you.ai
 ```
 
 The interactive wizard will guide you through:
-1. Entering your Anthropic API key
-2. Choosing a messaging provider (Telegram or WhatsApp)
-3. Configuring your messaging credentials
+1. Choosing an AI provider (Anthropic or Venice)
+2. Entering your API key
+3. Choosing a messaging provider (Telegram or WhatsApp)
+4. Configuring your messaging credentials
 
 The wizard walks you through obtaining each credential — no prior setup needed.
 

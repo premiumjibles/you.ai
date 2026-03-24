@@ -66,8 +66,12 @@ export function fromAnthropicResponse(response: {
 export class AnthropicProvider implements LLMProvider {
   name = "anthropic" as const;
 
+  private getClient(): Anthropic {
+    return new Anthropic();
+  }
+
   async chat(params: ChatParams): Promise<ChatResponse> {
-    const client = new Anthropic();
+    const client = this.getClient();
     const response = await client.messages.create({
       model: resolveModel("anthropic", params.model),
       max_tokens: params.maxTokens,
@@ -78,7 +82,7 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async chatWithTools(params: ChatWithToolsParams): Promise<ChatResponse> {
-    const client = new Anthropic();
+    const client = this.getClient();
     const response = await client.messages.create({
       model: resolveModel("anthropic", params.model),
       max_tokens: params.maxTokens,

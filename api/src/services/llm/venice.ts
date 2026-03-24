@@ -25,6 +25,15 @@ export function toOpenAIMessages(
   }
 
   for (const msg of messages) {
+    // System messages in the array are passed through (OpenAI accepts them inline)
+    if (msg.role === "system") {
+      const text = typeof msg.content === "string"
+        ? msg.content
+        : msg.content.filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text").map((b) => b.text).join("\n");
+      result.push({ role: "system", content: text });
+      continue;
+    }
+
     if (typeof msg.content === "string") {
       result.push({ role: msg.role, content: msg.content });
       continue;
@@ -106,6 +115,11 @@ export function fromOpenAIResponse(choice: {
 }): ChatResponse {
   const content: ContentBlock[] = [];
 
+  // Include text content if present (even alongside tool_calls)
+  if (choice.message.content) {
+    content.push({ type: "text", text: choice.message.content });
+  }
+
   if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
     for (const tc of choice.message.tool_calls) {
       content.push({
@@ -115,8 +129,6 @@ export function fromOpenAIResponse(choice: {
         input: JSON.parse(tc.function.arguments),
       });
     }
-  } else if (choice.message.content) {
-    content.push({ type: "text", text: choice.message.content });
   }
 
   return {
