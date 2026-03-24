@@ -2,6 +2,7 @@ import cron from "node-cron";
 import type pg from "pg";
 import Parser from "rss-parser";
 import { consolidateBriefing } from "./claude.js";
+import { getProvider } from "./llm/index.js";
 import type { MessagingProvider } from "./messaging/index.js";
 import { searchWeb } from "./search-web.js";
 
@@ -268,14 +269,13 @@ async function executeSubAgent(db: pg.Pool, agent: any): Promise<string> {
 
     case "custom": {
       if (config.prompt) {
-        const Anthropic = (await import("@anthropic-ai/sdk")).default;
-        const anthropic = new Anthropic();
-        const response = await anthropic.messages.create({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 500,
+        const provider = getProvider();
+        const response = await provider.chat({
+          model: "fast",
+          maxTokens: 500,
           messages: [{ role: "user", content: config.prompt }],
         });
-        return response.content[0].type === "text"
+        return response.content[0]?.type === "text"
           ? response.content[0].text
           : "";
       }

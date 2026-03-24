@@ -1,10 +1,5 @@
 import type pg from "pg";
-import OpenAI from "openai";
-
-function getOpenAIClient(): OpenAI | null {
-  if (!process.env.OPENAI_API_KEY) return null;
-  return new OpenAI();
-}
+import { getProvider } from "./llm/index.js";
 
 interface ContactFields {
   name: string;
@@ -21,21 +16,14 @@ export function buildEmbeddingText(contact: ContactFields): string {
 }
 
 export async function generateEmbedding(text: string): Promise<number[] | null> {
-  const openai = getOpenAIClient();
-  if (!openai) return null;
-  const response = await openai.embeddings.create({
-    model: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
-    input: text,
-    dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || "1536"),
-  });
-  return response.data[0].embedding;
+  const provider = getProvider();
+  return provider.embed(text);
 }
 
 export async function updateContactEmbedding(
   db: pg.Pool,
   contactId: string
 ): Promise<void> {
-  if (!process.env.OPENAI_API_KEY) return;
   const { rows } = await db.query(
     "SELECT name, role, company, location, notes FROM contacts WHERE id = $1",
     [contactId]
