@@ -610,7 +610,7 @@ collect_and_write_config() {
   if ! ui_confirm "Proceed with this configuration?"; then
     echo ""
     echo "No changes made. Run ./setup.sh again when you're ready."
-    exit 0
+    return 1
   fi
 
   write_env
@@ -618,7 +618,9 @@ collect_and_write_config() {
 }
 
 fresh_install() {
-  collect_and_write_config
+  if ! collect_and_write_config; then
+    return 0
+  fi
 
   if ! start_services; then
     return 1
@@ -846,11 +848,10 @@ rerun_setup() {
   saved_cron=$(env_get "$ENV_FILE" "BRIEFING_CRON")
   saved_pg_pass=$(env_get "$ENV_FILE" "POSTGRES_PASSWORD")
 
-  # Remove existing .env so collect_and_write_config treats it as new
-  rm -f "$ENV_FILE"
-
-  # Collect new core config and write .env (no service launch yet)
-  collect_and_write_config
+  # Collect new core config and write .env (overwrites existing .env)
+  if ! collect_and_write_config; then
+    return 0
+  fi
 
   # Restore saved advanced config BEFORE starting services
   [ -n "$saved_openai" ] && env_set "$ENV_FILE" "OPENAI_API_KEY" "$saved_openai"
