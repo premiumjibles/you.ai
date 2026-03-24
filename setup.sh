@@ -105,6 +105,21 @@ ui_choose() {
   fi
 }
 
+ui_choose_default() {
+  local default_val="$1"
+  shift
+  if [ -n "$GUM_BIN" ]; then
+    "$GUM_BIN" choose --selected "$default_val" "$@"
+  else
+    select opt in "$@"; do
+      if [ -n "$opt" ]; then
+        echo "$opt"
+        break
+      fi
+    done
+  fi
+}
+
 ui_confirm() {
   if [ -n "$GUM_BIN" ]; then
     "$GUM_BIN" confirm "$1"
@@ -624,8 +639,15 @@ advanced_config() {
   echo "  When should your morning briefing run?"
   echo "  Current: $current_cron"
   echo ""
-  local hour
-  hour=$(ui_choose "6:00 AM" "7:00 AM (default)" "8:00 AM" "9:00 AM" "Custom cron expression" "Skip")
+  local hour schedule_default
+  case "$current_cron" in
+    "0 6 * * *") schedule_default="6:00 AM" ;;
+    "0 7 * * *") schedule_default="7:00 AM (default)" ;;
+    "0 8 * * *") schedule_default="8:00 AM" ;;
+    "0 9 * * *") schedule_default="9:00 AM" ;;
+    *)           schedule_default="Custom cron expression" ;;
+  esac
+  hour=$(ui_choose_default "$schedule_default" "6:00 AM" "7:00 AM (default)" "8:00 AM" "9:00 AM" "Custom cron expression" "Skip")
   case "$hour" in
     "6:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 6 * * *" ;;
     "7:00"*) env_set "$ENV_FILE" "BRIEFING_CRON" "0 7 * * *" ;;
