@@ -117,6 +117,91 @@ export async function draftOutreach(
   return response.content[0].type === "text" ? response.content[0].text : "";
 }
 
+interface MemoContact {
+  name: string;
+  company?: string | null;
+  role?: string | null;
+  email?: string | null;
+  notes?: string | null;
+}
+
+interface MemoInteraction {
+  summary?: string | null;
+  date?: string | null;
+}
+
+export function buildMemoPrompt(
+  company: string,
+  contacts: MemoContact[],
+  contactInteractions: { contact: MemoContact; interactions: MemoInteraction[] }[],
+  webContext?: string | null
+): string {
+  let prompt = `Generate an investment memo / one-pager for the company: "${company}"\n\n`;
+
+  if (contacts.length > 0) {
+    prompt += "## Known Contacts\n";
+    for (const c of contacts) {
+      prompt += `- ${c.name}`;
+      if (c.role) prompt += ` (${c.role})`;
+      if (c.email) prompt += ` — ${c.email}`;
+      if (c.notes) prompt += ` — ${c.notes}`;
+      prompt += "\n";
+    }
+    prompt += "\n";
+  }
+
+  if (contactInteractions.length > 0) {
+    prompt += "## Recent Interactions\n";
+    for (const ci of contactInteractions) {
+      if (ci.interactions.length === 0) continue;
+      prompt += `### ${ci.contact.name}\n`;
+      for (const i of ci.interactions) {
+        const prefix = i.date ? `[${i.date}] ` : "";
+        if (i.summary) prompt += `- ${prefix}${i.summary}\n`;
+      }
+    }
+    prompt += "\n";
+  }
+
+  if (webContext) {
+    prompt += `## Web Research\n${webContext}\n\n`;
+  }
+
+  prompt += `Structure your response as an investment memo with these sections:
+## Company Overview
+Brief description of what the company does, their market, and value proposition.
+
+## Key Contacts
+Summary of our relationship contacts at this company and their roles.
+
+## Recent Interactions
+Highlight key themes and takeaways from our interactions.
+
+## Current News & Context
+Any relevant context from web research (if available) or general knowledge.
+
+## Summary & Recommendation
+Concise assessment of the relationship and suggested next steps.
+
+If you have limited information for any section, note what's missing and provide what you can. Be concise and actionable.`;
+  return prompt;
+}
+
+export async function generateMemo(
+  company: string,
+  contacts: MemoContact[],
+  contactInteractions: { contact: MemoContact; interactions: MemoInteraction[] }[],
+  webContext?: string | null
+): Promise<string> {
+  const prompt = buildMemoPrompt(company, contacts, contactInteractions, webContext);
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-6-20260401",
+    max_tokens: 2000,
+    messages: [{ role: "user", content: prompt }],
+  });
+  return response.content[0].type === "text" ? response.content[0].text : "";
+}
+
 export async function summarizeInteraction(content: string): Promise<string> {
   const response = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
