@@ -19,18 +19,6 @@ describe("briefing_schedule tool", () => {
   beforeEach(async () => {
     vi.resetModules();
 
-    vi.mock("@anthropic-ai/sdk", () => {
-      const create = vi.fn().mockResolvedValue({
-        stop_reason: "end_turn",
-        content: [{ type: "text", text: "mock response" }],
-      });
-      return {
-        default: class {
-          messages = { create };
-        },
-      };
-    });
-
     // Clear env vars that getConfig might fall back to
     delete process.env.briefing_time;
     delete process.env.timezone;

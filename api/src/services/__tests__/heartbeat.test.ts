@@ -137,4 +137,73 @@ describe("heartbeat", () => {
       expect.stringContaining("sub_agents")
     );
   });
+
+  it("triggers briefing when within window and no briefing exists today", async () => {
+    // 2026-03-24T14:00Z = 07:00 PDT in America/Los_Angeles
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-24T14:00:00Z"));
+
+    const { getConfig } = await import("../config.js");
+    const { heartbeat } = await import("../scheduler.js");
+    const db = makeStubDb({ briefings: { rows: [{ count: "0" }] } });
+    const provider = makeStubProvider();
+
+    vi.mocked(getConfig).mockImplementation(async (_db, key) => {
+      if (key === "briefing_time") return "07:00";
+      if (key === "timezone") return "America/Los_Angeles";
+    });
+
+    await heartbeat(db, provider, "owner123");
+
+    // runMorningBriefing calls provider.send with the briefing content
+    expect(provider.send).toHaveBeenCalledWith("owner123", expect.any(String));
+
+    vi.useRealTimers();
+  });
+
+  it("skips briefing when one already exists today (dedup guard)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-24T14:00:00Z"));
+
+    const { getConfig } = await import("../config.js");
+    const { heartbeat } = await import("../scheduler.js");
+    const db = makeStubDb({ briefings: { rows: [{ count: "1" }] } });
+    const provider = makeStubProvider();
+
+    vi.mocked(getConfig).mockImplementation(async (_db, key) => {
+      if (key === "briefing_time") return "07:00";
+      if (key === "timezone") return "America/Los_Angeles";
+    });
+
+    await heartbeat(db, provider, "owner123");
+
+    // provider.send should not be called — no briefing, no urgent alerts (no sub_agents)
+    expect(provider.send).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it("always runs urgent alerts even when briefing is triggered", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-24T14:00:00Z"));
+
+    const { getConfig } = await import("../config.js");
+    const { heartbeat } = await import("../scheduler.js");
+    const db = makeStubDb({ briefings: { rows: [{ count: "0" }] } });
+    const provider = makeStubProvider();
+
+    vi.mocked(getConfig).mockImplementation(async (_db, key) => {
+      if (key === "briefing_time") return "07:00";
+      if (key === "timezone") return "America/Los_Angeles";
+    });
+
+    await heartbeat(db, provider, "owner123");
+
+    // runUrgentAlerts always queries sub_agents
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("sub_agents")
+    );
+
+    vi.useRealTimers();
+  });
 });
