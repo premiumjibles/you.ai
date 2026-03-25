@@ -114,7 +114,7 @@ export default function Import() {
                   {data.imports.map((imp) => (
                     <tr key={imp.id} className="border-t border-[#1e1e2e]">
                       <td className="p-3 text-[#999] whitespace-nowrap">{new Date(imp.created_at).toLocaleDateString()}</td>
-                      <td className="p-3 text-[#e2e8f0] truncate max-w-[120px]">{imp.filename}</td>
+                      <td className="p-3 text-[#e2e8f0]"><div className="truncate max-w-[120px]">{imp.filename}</div></td>
                       <td className="p-3"><span className="text-[10px] uppercase tracking-wider bg-[#1e1e2e] px-2 py-0.5 rounded text-[#999]">{imp.file_type}</span></td>
                       <td className="p-3 text-right text-[#e2e8f0] tabular-nums">{imp.records_imported}</td>
                       <td className="p-3 text-right text-[#666] tabular-nums">{imp.duplicates_merged}</td>
