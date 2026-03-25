@@ -87,7 +87,7 @@ export default function Import() {
         </div>
 
         {/* Center: Drop Zone */}
-        <div className="order-1 lg:order-2 self-center">
+        <div className="order-1 lg:order-2 self-start">
           <DropZone onUploadComplete={refetch} />
         </div>
 
