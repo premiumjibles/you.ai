@@ -94,7 +94,7 @@ CREATE TABLE outreach_drafts (
 CREATE TABLE import_history (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   filename TEXT NOT NULL,
-  file_type TEXT NOT NULL CHECK (file_type IN ('csv', 'mbox', 'ics')),
+  file_type TEXT NOT NULL CHECK (file_type IN ('csv', 'mbox', 'ics', 'linkedin-messages')),
   records_imported INT DEFAULT 0,
   duplicates_merged INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -122,9 +122,9 @@ CREATE TABLE app_settings (
 CREATE INDEX idx_contacts_name_trgm ON contacts USING gist (name gist_trgm_ops);
 CREATE INDEX idx_contacts_full_tsvector ON contacts USING gin (full_tsvector);
 CREATE INDEX idx_contacts_embedding ON contacts USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX idx_contacts_email ON contacts (email) WHERE email IS NOT NULL;
-CREATE INDEX idx_contacts_phone ON contacts (phone) WHERE phone IS NOT NULL;
-CREATE INDEX idx_contacts_linkedin_url ON contacts (linkedin_url) WHERE linkedin_url IS NOT NULL;
+CREATE UNIQUE INDEX idx_contacts_email_unique ON contacts (lower(email)) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX idx_contacts_phone_unique ON contacts (phone) WHERE phone IS NOT NULL;
+CREATE UNIQUE INDEX idx_contacts_linkedin_url_unique ON contacts (lower(linkedin_url)) WHERE linkedin_url IS NOT NULL;
 CREATE INDEX idx_interactions_contact_id ON interactions (contact_id);
 CREATE INDEX idx_interactions_date ON interactions (date DESC);
 CREATE INDEX idx_interactions_group_id ON interactions (group_id) WHERE group_id IS NOT NULL;

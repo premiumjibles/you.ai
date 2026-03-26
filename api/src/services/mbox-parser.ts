@@ -44,18 +44,23 @@ async function* splitMboxStream(filePath: string): AsyncGenerator<string> {
 
 async function flushInteractions(db: pg.Pool | pg.PoolClient, batch: PendingInteraction[]): Promise<void> {
   if (batch.length === 0) return;
-  const values: any[] = [];
-  const placeholders: string[] = [];
-  for (let i = 0; i < batch.length; i++) {
-    const off = i * 5;
-    placeholders.push(`(SELECT c.id FROM contacts c WHERE c.email = $${off + 5} LIMIT 1), 'email', $${off + 1}, $${off + 2}, $${off + 3}, $${off + 4}`);
-    values.push(batch[i].date, batch[i].rawContent, batch[i].summary, batch[i].groupId, batch[i].email);
+  // Insert one-by-one using INSERT...SELECT which skips rows where contact is not found
+  for (const item of batch) {
+    await db.query(
+      `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
+       SELECT c.id, 'email', $1, $2, $3, $4
+       FROM contacts c WHERE c.email = $5 LIMIT 1
+       ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`,
+      [item.date, item.rawContent, item.summary, item.groupId, item.email]
+    );
   }
-  const sql = `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id) VALUES ${placeholders.map((p) => `(${p})`).join(", ")} ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`;
-  await db.query(sql, values);
 }
 
-export async function parseMbox(filePath: string, db: pg.Pool | pg.PoolClient): Promise<ImportResult> {
+export async function parseMbox(
+  filePath: string,
+  db: pg.Pool | pg.PoolClient,
+  onProgress?: (contacts: number, interactions: number) => void
+): Promise<ImportResult> {
   const seen = new Set<string>();
   let contacts = 0;
   let interactions = 0;
@@ -122,6 +127,7 @@ export async function parseMbox(filePath: string, db: pg.Pool | pg.PoolClient): 
         if (batch.length >= BATCH_SIZE) {
           await flushInteractions(db, batch);
           batch = [];
+          if (onProgress) onProgress(contacts, interactions);
         }
       }
     } catch {
@@ -130,6 +136,7 @@ export async function parseMbox(filePath: string, db: pg.Pool | pg.PoolClient): 
   }
 
   await flushInteractions(db, batch);
+  if (onProgress) onProgress(contacts, interactions);
 
   return { contacts, interactions };
 }

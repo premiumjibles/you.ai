@@ -3,9 +3,19 @@ import type pg from "pg";
 import { upsertContact } from "./ingestion.js";
 import { nameOrHumanize } from "./name-utils.js";
 
+const BATCH_SIZE = 200;
+
 interface ImportResult {
   contacts: number;
   interactions: number;
+}
+
+interface PendingInteraction {
+  email: string;
+  date: string;
+  rawContent: string;
+  summary: string;
+  groupId: string | null;
 }
 
 function extractEmail(attendee: any): string | null {
@@ -36,12 +46,30 @@ function buildRawContent(event: any): string {
   return parts.filter(Boolean).join("\n");
 }
 
-export async function parseIcs(filePath: string, db: pg.Pool | pg.PoolClient): Promise<ImportResult> {
+async function flushInteractions(db: pg.Pool | pg.PoolClient, batch: PendingInteraction[]): Promise<void> {
+  if (batch.length === 0) return;
+  for (const item of batch) {
+    await db.query(
+      `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
+       SELECT c.id, 'meeting', $1, $2, $3, $4
+       FROM contacts c WHERE c.email = $5 LIMIT 1
+       ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`,
+      [item.date, item.rawContent, item.summary, item.groupId, item.email]
+    );
+  }
+}
+
+export async function parseIcs(
+  filePath: string,
+  db: pg.Pool | pg.PoolClient,
+  onProgress?: (contacts: number, interactions: number) => void
+): Promise<ImportResult> {
   const events = await ical.async.parseFile(filePath);
 
   const seen = new Set<string>();
   let contacts = 0;
   let interactions = 0;
+  let batch: PendingInteraction[] = [];
 
   const ownerEmail = process.env.OWNER_EMAIL?.toLowerCase();
 
@@ -53,7 +81,6 @@ export async function parseIcs(filePath: string, db: pg.Pool | pg.PoolClient): P
     const rawContent = buildRawContent(event);
     const baseUid = (event as any).uid || null;
 
-    // Collect occurrence dates (single or expanded from RRULE)
     const dates: Date[] = [];
     const rrule = (event as any).rrule;
     if (rrule && typeof rrule.between === "function") {
@@ -68,7 +95,6 @@ export async function parseIcs(filePath: string, db: pg.Pool | pg.PoolClient): P
       dates.push(start instanceof Date ? start : new Date());
     }
 
-    // Collect participants: attendees + organizer
     const participants: { email: string; name: string }[] = [];
 
     const attendees = Array.isArray((event as any).attendee)
@@ -83,7 +109,6 @@ export async function parseIcs(filePath: string, db: pg.Pool | pg.PoolClient): P
       participants.push({ email, name: extractName(attendee, email) });
     }
 
-    // Extract organizer
     const organizer = (event as any).organizer;
     if (organizer) {
       const orgEmail = extractEmail(organizer);
@@ -110,18 +135,20 @@ export async function parseIcs(filePath: string, db: pg.Pool | pg.PoolClient): P
         const eventDate = date.toISOString();
         const groupId = baseUid ? `${baseUid}-${eventDate}` : null;
 
-        await db.query(
-          `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
-           SELECT c.id, 'meeting', $1, $2, $3, $4
-           FROM contacts c WHERE c.email = $5
-           LIMIT 1
-           ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`,
-          [eventDate, rawContent, summary, groupId, participant.email]
-        );
+        batch.push({ email: participant.email, date: eventDate, rawContent, summary, groupId });
         interactions++;
+
+        if (batch.length >= BATCH_SIZE) {
+          await flushInteractions(db, batch);
+          batch = [];
+          if (onProgress) onProgress(contacts, interactions);
+        }
       }
     }
   }
+
+  await flushInteractions(db, batch);
+  if (onProgress) onProgress(contacts, interactions);
 
   return { contacts, interactions };
 }

@@ -12,13 +12,14 @@ import {
   fetchFinancialData,
   fetchRssFeeds,
   fetchNetworkActivity,
+  fetchSuggestMeetings,
 } from "../tools/index.js";
 import { getConfig, upsertSetting } from "./config.js";
 import { validateSubAgent, mergeSubAgentConfig } from "./sub-agent-validation.js";
 
 const anthropic = new Anthropic();
 
-const SYSTEM_PROMPT = `You are the user's personal network and briefing assistant. You manage their professional contacts, daily briefings, and outreach drafts. You do not provide general advice, scheduling, or task management — redirect those requests politely.
+const SYSTEM_PROMPT = `You are the user's personal AI assistant. Your core strengths are professional contacts, daily briefings, and outreach drafts, but you also have a web_search tool — use it proactively to answer factual or research questions. For complex questions, break them into multiple web searches. Only redirect requests you truly cannot help with (e.g. calendar scheduling, task management).
 
 <behavior>
 - Write in plain text. Use a single emoji at the start of each section header (e.g., "📊 Market Update"). No markdown, bullet symbols, or other formatting.
@@ -44,6 +45,7 @@ const SYSTEM_PROMPT = `You are the user's personal network and briefing assistan
 - Blog/feed updates → rss_feed
 - Recent network interactions → network_activity
 - Briefing schedule / delivery time / timezone → briefing_schedule
+- Travel meetings / who to meet in [city] / "I'm going to X" → suggest_meetings
 </tool-routing>
 
 <ad-hoc-vs-recurring>
@@ -338,6 +340,9 @@ export async function executeTool(db: pg.Pool, name: string, input: any): Promis
 
     case "network_activity":
       return await fetchNetworkActivity(db, input);
+
+    case "suggest_meetings":
+      return await fetchSuggestMeetings(db, input);
 
     case "briefing_schedule": {
       if (input.action === "get") {

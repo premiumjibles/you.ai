@@ -58,6 +58,10 @@ engines:
     disabled: false
   - name: mojeek
     disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: brave
+    disabled: false
 
   # --- News (all working) ---
   - name: reuters

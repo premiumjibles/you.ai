@@ -1,18 +1,32 @@
-import { readFile } from "fs/promises";
-import { parse } from "csv-parse/sync";
+import { createReadStream } from "fs";
+import { parse } from "csv-parse";
 import type pg from "pg";
 import { upsertContact } from "./ingestion.js";
 import { scrub } from "./scrubber.js";
 import { stripHtml } from "./html-utils.js";
+
+const BATCH_SIZE = 200;
 
 interface ImportResult {
   contacts: number;
   interactions: number;
 }
 
-function detectOwnerUrl(records: any[]): string | null {
+interface PendingInteraction {
+  linkedinUrl: string;
+  date: string;
+  rawContent: string;
+  summary: string;
+  groupId: string;
+}
+
+async function detectOwnerUrl(filePath: string): Promise<string | null> {
   const urlCounts = new Map<string, number>();
-  for (const row of records) {
+  const parser = createReadStream(filePath, "utf-8").pipe(
+    parse({ columns: true, skip_empty_lines: true, trim: true, relax_quotes: true, relax_column_count: true })
+  );
+
+  for await (const row of parser) {
     const recipientUrls = (row["RECIPIENT PROFILE URLS"] || "").trim();
     if (recipientUrls) {
       for (const url of recipientUrls.split(",")) {
@@ -21,6 +35,7 @@ function detectOwnerUrl(records: any[]): string | null {
       }
     }
   }
+
   let maxUrl: string | null = null;
   let maxCount = 0;
   for (const [url, count] of urlCounts) {
@@ -29,22 +44,37 @@ function detectOwnerUrl(records: any[]): string | null {
   return maxUrl;
 }
 
-export async function parseLinkedInMessages(filePath: string, db: pg.Pool | pg.PoolClient): Promise<ImportResult> {
-  const csvText = await readFile(filePath, "utf-8");
-  const records = parse(csvText, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-    relax_quotes: true,
-    relax_column_count: true,
-  });
+async function flushInteractions(db: pg.Pool | pg.PoolClient, batch: PendingInteraction[]): Promise<void> {
+  if (batch.length === 0) return;
+  for (const item of batch) {
+    await db.query(
+      `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
+       SELECT c.id, 'linkedin', $1, $2, $3, $4
+       FROM contacts c WHERE lower(c.linkedin_url) = lower($5) LIMIT 1
+       ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`,
+      [item.date, item.rawContent, item.summary, item.groupId, item.linkedinUrl]
+    );
+  }
+}
 
-  const ownerUrl = process.env.OWNER_LINKEDIN_URL?.toLowerCase() || detectOwnerUrl(records)?.toLowerCase();
+export async function parseLinkedInMessages(
+  filePath: string,
+  db: pg.Pool | pg.PoolClient,
+  onProgress?: (contacts: number, interactions: number) => void
+): Promise<ImportResult> {
+  const ownerUrl = process.env.OWNER_LINKEDIN_URL?.toLowerCase()
+    || (await detectOwnerUrl(filePath))?.toLowerCase();
+
+  const parser = createReadStream(filePath, "utf-8").pipe(
+    parse({ columns: true, skip_empty_lines: true, trim: true, relax_quotes: true, relax_column_count: true })
+  );
+
   const seen = new Set<string>();
   let contacts = 0;
   let interactions = 0;
+  let batch: PendingInteraction[] = [];
 
-  for (const row of records) {
+  for await (const row of parser) {
     const from = row["FROM"] || "";
     const senderUrl = (row["SENDER PROFILE URL"] || "").trim();
     const date = row["DATE"] || "";
@@ -53,12 +83,8 @@ export async function parseLinkedInMessages(filePath: string, db: pg.Pool | pg.P
     const subject = row["SUBJECT"] || "";
 
     if (!from || !content) continue;
-
-    // Skip messages from the owner
     if (ownerUrl && senderUrl.toLowerCase() === ownerUrl) continue;
-    // No sender URL = likely spam/system message
     if (!senderUrl) continue;
-    // Skip LinkedIn system messages
     if (from === "LinkedIn" || from === "LinkedIn Learning" || from === "LinkedIn Member") continue;
 
     const messageDate = date ? new Date(date) : null;
@@ -68,7 +94,6 @@ export async function parseLinkedInMessages(filePath: string, db: pg.Pool | pg.P
     if (!plainContent) continue;
 
     const groupId = `linkedin-msg-${conversationId}-${messageDate.toISOString()}`;
-
     const rawContent = scrub(
       `${subject ? `Subject: ${subject}\n\n` : ""}${plainContent.slice(0, 2000)}`
     );
@@ -76,24 +101,22 @@ export async function parseLinkedInMessages(filePath: string, db: pg.Pool | pg.P
 
     if (!seen.has(senderUrl)) {
       seen.add(senderUrl);
-      await upsertContact(db, {
-        name: from,
-        linkedin_url: senderUrl,
-        source: "linkedin",
-      });
+      await upsertContact(db, { name: from, linkedin_url: senderUrl, source: "linkedin" });
       contacts++;
     }
 
-    await db.query(
-      `INSERT INTO interactions (contact_id, type, date, raw_content, summary, group_id)
-       SELECT c.id, 'linkedin', $1, $2, $3, $4
-       FROM contacts c WHERE c.linkedin_url = $5
-       LIMIT 1
-       ON CONFLICT (contact_id, group_id) WHERE group_id IS NOT NULL DO NOTHING`,
-      [messageDate.toISOString(), rawContent, summary, groupId, senderUrl]
-    );
+    batch.push({ linkedinUrl: senderUrl, date: messageDate.toISOString(), rawContent, summary, groupId });
     interactions++;
+
+    if (batch.length >= BATCH_SIZE) {
+      await flushInteractions(db, batch);
+      batch = [];
+      if (onProgress) onProgress(contacts, interactions);
+    }
   }
+
+  await flushInteractions(db, batch);
+  if (onProgress) onProgress(contacts, interactions);
 
   return { contacts, interactions };
 }

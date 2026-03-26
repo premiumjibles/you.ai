@@ -5,12 +5,14 @@ export { fetchMarketData } from "./market-tracker.js";
 export { fetchFinancialData } from "./financial-tracker.js";
 export { fetchRssFeeds } from "./rss-feed.js";
 export { fetchNetworkActivity } from "./network-activity.js";
+export { fetchSuggestMeetings } from "./suggest-meetings.js";
 
 import { toolDef as githubActivity } from "./github-activity.js";
 import { toolDef as marketTracker } from "./market-tracker.js";
 import { toolDef as financialTracker } from "./financial-tracker.js";
 import { toolDef as rssFeed } from "./rss-feed.js";
 import { toolDef as networkActivity } from "./network-activity.js";
+import { toolDef as suggestMeetings } from "./suggest-meetings.js";
 
 export const dataTools: Anthropic.Tool[] = [
   githubActivity,
@@ -18,4 +20,5 @@ export const dataTools: Anthropic.Tool[] = [
   financialTracker,
   rssFeed,
   networkActivity,
+  suggestMeetings,
 ];

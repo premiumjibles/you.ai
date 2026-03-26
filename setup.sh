@@ -829,43 +829,31 @@ ensure_owner_email() {
   fi
 }
 
-# Send a file to an import endpoint and display results
-# Usage: send_import "/api/import/mbox" "/path/to/file.mbox" "Gmail"
-send_import() {
-  local endpoint="$1" filepath="$2" label="$3"
-  local api_url
-  api_url=$(get_api_url)
+# Run import via CLI script (reads files directly from disk, no HTTP)
+# Usage: run_import "gmail" "/path/to/file.mbox" "Gmail"
+run_import() {
+  local command="$1" filepath="$2" label="$3"
+
+  # Build a host-side DATABASE_URL (the .env one uses Docker hostname "postgres")
+  local pg_pass pg_port
+  pg_pass=$(env_get "$ENV_FILE" "POSTGRES_PASSWORD")
+  pg_port=$(env_get "$ENV_FILE" "POSTGRES_PORT")
+  pg_port="${pg_port:-5432}"
+  local db_url="postgresql://youai:${pg_pass}@localhost:${pg_port}/youai"
+
+  # Also forward OWNER_EMAIL and OWNER_LINKEDIN_URL for filtering
+  local owner_email owner_linkedin
+  owner_email=$(env_get "$ENV_FILE" "OWNER_EMAIL")
+  owner_linkedin=$(env_get "$ENV_FILE" "OWNER_LINKEDIN_URL")
 
   echo ""
-  local response http_code body
-  response=$(curl -s -w "\n%{http_code}" -X POST "${api_url}${endpoint}" -F "file=@${filepath}" 2>&1)
-  http_code=$(echo "$response" | tail -1)
-  body=$(echo "$response" | sed '$d')
-
-  if [ "$http_code" != "200" ]; then
-    ui_error "${label} import failed (HTTP ${http_code})"
-    echo "  $body"
+  if DATABASE_URL="$db_url" OWNER_EMAIL="$owner_email" OWNER_LINKEDIN_URL="$owner_linkedin" \
+     npx tsx api/scripts/import.ts "$command" "$filepath"; then
+    ui_success "${label} import complete!"
+    return 0
+  else
+    ui_error "${label} import failed"
     return 1
-  fi
-
-  ui_success "${label} import complete!"
-
-  # Parse and display results from JSON response
-  # Handle both CSV-style (total/created/merged) and mbox/ics-style (contacts/interactions) responses
-  local contacts created merged interactions
-  contacts=$(echo "$body" | grep -o '"contacts":[0-9]*' | head -1 | cut -d: -f2)
-  created=$(echo "$body" | grep -o '"created":[0-9]*' | head -1 | cut -d: -f2)
-  merged=$(echo "$body" | grep -o '"merged":[0-9]*' | head -1 | cut -d: -f2)
-  interactions=$(echo "$body" | grep -o '"interactions":[0-9]*' | head -1 | cut -d: -f2)
-
-  if [ -n "$created" ] && [ -n "$merged" ]; then
-    echo "  Contacts created: $created"
-    echo "  Contacts merged with existing: $merged"
-  elif [ -n "$contacts" ]; then
-    echo "  Contacts processed: $contacts"
-  fi
-  if [ -n "$interactions" ]; then
-    echo "  Interactions logged: $interactions"
   fi
 }
 
@@ -916,11 +904,6 @@ import_data() {
 
   # Ensure OWNER_EMAIL is set before any imports
   ensure_owner_email
-
-  # Ensure API is running
-  if ! ensure_api_running; then
-    return 1
-  fi
 
   local imported=0
   local done_gmail="" done_calendar="" done_linkedin_conn="" done_linkedin_msg=""
@@ -1003,7 +986,7 @@ import_gmail() {
   echo ""
 
   if prompt_file "mbox file" ".mbox"; then
-    send_import "/api/import/mbox" "$PROMPT_RESULT" "Gmail"
+    run_import "gmail" "$PROMPT_RESULT" "Gmail"
     return $?
   fi
   return 1
@@ -1023,7 +1006,7 @@ import_calendar() {
   echo ""
 
   if prompt_file "ics file" ".ics"; then
-    send_import "/api/import/ics" "$PROMPT_RESULT" "Calendar"
+    run_import "calendar" "$PROMPT_RESULT" "Calendar"
     return $?
   fi
   return 1
@@ -1043,7 +1026,7 @@ import_linkedin_connections() {
   echo ""
 
   if prompt_file "Connections.csv file" ".csv"; then
-    send_import "/api/import/csv" "$PROMPT_RESULT" "LinkedIn Connections"
+    run_import "linkedin-connections" "$PROMPT_RESULT" "LinkedIn Connections"
     return $?
   fi
   return 1
@@ -1062,7 +1045,7 @@ import_linkedin_messages() {
   echo ""
 
   if prompt_file "messages.csv file" ".csv"; then
-    send_import "/api/import/linkedin-messages" "$PROMPT_RESULT" "LinkedIn Messages"
+    run_import "linkedin-messages" "$PROMPT_RESULT" "LinkedIn Messages"
     return $?
   fi
   return 1
@@ -1084,7 +1067,7 @@ import_csv() {
   echo ""
 
   if prompt_file "CSV file" ".csv"; then
-    send_import "/api/import/csv" "$PROMPT_RESULT" "Contacts"
+    run_import "csv" "$PROMPT_RESULT" "Contacts"
     return $?
   fi
   return 1

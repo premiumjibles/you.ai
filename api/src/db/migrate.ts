@@ -16,7 +16,7 @@ export async function runMigrations(db: Pool): Promise<void> {
     CREATE TABLE IF NOT EXISTS import_history (
       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
       filename TEXT NOT NULL,
-      file_type TEXT NOT NULL CHECK (file_type IN ('csv', 'mbox', 'ics')),
+      file_type TEXT NOT NULL CHECK (file_type IN ('csv', 'mbox', 'ics', 'linkedin-messages')),
       records_imported INT DEFAULT 0,
       duplicates_merged INT DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT NOW()
@@ -55,5 +55,28 @@ export async function runMigrations(db: Pool): Promise<void> {
     EXCEPTION WHEN duplicate_object THEN NULL;
     END $$;
   `);
+
+  // Unique contact indexes (replace old non-unique ones)
+  await db.query(`
+    DROP INDEX IF EXISTS idx_contacts_email;
+    DROP INDEX IF EXISTS idx_contacts_phone;
+    DROP INDEX IF EXISTS idx_contacts_linkedin_url;
+  `);
+  await db.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_email_unique
+      ON contacts (lower(email)) WHERE email IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_phone_unique
+      ON contacts (phone) WHERE phone IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_linkedin_url_unique
+      ON contacts (lower(linkedin_url)) WHERE linkedin_url IS NOT NULL;
+  `);
+
+  // Update import_history CHECK constraint to include linkedin-messages
+  await db.query(`
+    ALTER TABLE import_history DROP CONSTRAINT IF EXISTS import_history_file_type_check;
+    ALTER TABLE import_history ADD CONSTRAINT import_history_file_type_check
+      CHECK (file_type IN ('csv', 'mbox', 'ics', 'linkedin-messages'));
+  `);
+
   console.log("Database migrations complete");
 }
