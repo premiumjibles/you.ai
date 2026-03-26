@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# Always run from the directory where this script lives
+cd "$(dirname "$0")"
+
 # Constants
 GUM_VERSION="0.17.0"
 GUM_DIR=".gum"
